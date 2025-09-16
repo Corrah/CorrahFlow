@@ -59,7 +59,18 @@ async def health_check():
         "version": "1.0.0",
         "uptime": "ok"
     }
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
+@app.api_route("/ping", methods=["GET", "HEAD"])
+async def ping(request: Request):
+    """
+    Endpoint minimal compatibile sia con GET che HEAD.
+    Restituisce sempre 200 OK con JSON.
+    """
+    if request.method == "HEAD":
+        return JSONResponse(status_code=200, content=None)
+    return {"status": "ok"}
 
 @app.get("/favicon.ico")
 async def get_favicon():
