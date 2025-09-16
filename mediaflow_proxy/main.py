@@ -51,9 +51,14 @@ async def verify_api_key(api_key: str = Security(api_password_query), api_key_al
     raise HTTPException(status_code=403, detail="Could not validate credentials")
 
 
-@app.get("/health")
+@app.get("/health", tags=["system"])
 async def health_check():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "service": "corrahflow",
+        "version": "1.0.0",
+        "uptime": "ok"
+    }
 
 
 @app.get("/favicon.ico")
