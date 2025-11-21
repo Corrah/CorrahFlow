@@ -118,8 +118,9 @@ class GenericHLSExtractor:
 
     async def extract(self, url, **kwargs):
         # ✅ CORREZIONE: Permette anche gli URL di playlist VixSrc che non richiedono estensione.
-        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', '.ts', 'vixsrc.to/playlist']):
-            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd, .ts o URL VixSrc valido)")
+        # ✅ AGGIORNATO: Aggiunto 'newkso.ru' per accettare i segmenti di DLHD.
+        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', '.ts', 'vixsrc.to/playlist', 'newkso.ru']):
+            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd, .ts, URL VixSrc o URL newkso.ru valido)")
 
         parsed_url = urlparse(url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -168,8 +169,9 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
-            # ✅ MODIFICATO: Aggiunto 'vixsrc.to/playlist' per gestire i sub-manifest come HLS generici.
-            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd', '.ts']) or 'vixsrc.to/playlist' in url.lower():
+            # ✅ MODIFICATO: Gestisce tutti i segmenti e sub-manifest.
+            # Aggiunto 'newkso.ru' per catturare i segmenti di DLHD.
+            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd', '.ts', 'newkso.ru']) or 'vixsrc.to/playlist' in url.lower():
                 key = "hls_generic"
                 if key not in self.extractors:
                     self.extractors[key] = GenericHLSExtractor(request_headers, proxies=GLOBAL_PROXIES)
@@ -432,7 +434,8 @@ class HLSProxy:
                     content_type = resp.headers.get('content-type', '')
                     
                     # Gestione special per manifest HLS
-                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8'):
+                    # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
+                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and 'newkso.ru' in stream_url):
                         manifest_content = await resp.text()
                         
                         # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
@@ -650,26 +653,25 @@ class HLSProxy:
                 else:
                     rewritten_lines.append(line)
 
-            # Gestione segmenti video (.ts) e sub-manifest (.m3u8), sia relativi che assoluti
-            elif line and not line.startswith('#') and ('http' in line or not any(c in line for c in ' =?')):
-                # ✅ CORREZIONE FINALE: Distingue tra manifest e segmenti.
-                # I manifest (.m3u8) e le playlist vixsrc vanno all'endpoint proxy principale.
-                if '.m3u8' in line or 'vixsrc.to/playlist' in line:
-                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
-                    encoded_url = urllib.parse.quote(absolute_url, safe='')
+            # Gestione segmenti video e sub-manifest, sia relativi che assoluti
+            elif line and not line.startswith('#'):
+                # ✅ CORREZIONE: Riscrive qualsiasi URL relativo o assoluto che non sia un tag.
+                # Distingue tra manifest (.m3u8, .css) e segmenti (.ts, .html, etc.).
+                absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+                encoded_url = urllib.parse.quote(absolute_url, safe='')
+                
+                # I sub-manifest o URL che potrebbero contenere altri manifest vengono inviati all'endpoint proxy.
+                if any(ext in line for ext in ['.m3u8', '.css']):
                     proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
-                # I segmenti .ts vengono gestiti come stream diretti tramite lo stesso endpoint,
-                # ma la logica in `handle_proxy_request` e `get_extractor` li instraderà correttamente.
-                elif '.ts' in line:
-                    absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
-                    encoded_url = urllib.parse.quote(absolute_url, safe='')
-                    # Usiamo lo stesso endpoint, la logica in `get_extractor` e `_proxy_stream` distinguerà il content-type.
-                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
-                    rewritten_lines.append(proxy_url)
+                # Tutti gli altri (segmenti .ts, .html, etc.) vengono inviati allo stesso endpoint,
+                # ma la logica in _proxy_stream li tratterà come stream diretti e non come manifest da processare.
                 else:
-                    rewritten_lines.append(line) # Lascia invariati altri URL assoluti
+                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    rewritten_lines.append(proxy_url)
+
             else:
+                # Aggiunge tutti gli altri tag (es. #EXTINF, #EXT-X-ENDLIST)
                 rewritten_lines.append(line)
         
         return '\n'.join(rewritten_lines)
