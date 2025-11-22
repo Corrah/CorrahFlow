@@ -19,9 +19,12 @@ load_dotenv() # Carica le variabili dal file .env
 # ✅ CORREZIONE: Imposta un formato standard e assicurati che il logger 'aiohttp.access'
 # non venga silenziato, permettendo la visualizzazione dei log di accesso.
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(levelname)s:%(name)s:%(message)s'
 )
+
+# Silenzia i log di accesso di aiohttp a meno che non siano errori
+logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 
@@ -49,31 +52,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
 
 try:
-    from vavoo_extractor import VavooExtractor
+    from extractors.vavoo import VavooExtractor
     logger.info("✅ Modulo VavooExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo VavooExtractor non trovato. Funzionalità Vavoo disabilitata.")
 
 try:
-    from dlhd_extractor import DLHDExtractor
+    from extractors.dlhd import DLHDExtractor
     logger.info("✅ Modulo DLHDExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo DLHDExtractor non trovato. Funzionalità DLHD disabilitata.")
 
 try:
-    from playlist_builder import PlaylistBuilder
+    from routes.playlist_builder import PlaylistBuilder
     logger.info("✅ Modulo PlaylistBuilder caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo PlaylistBuilder non trovato. Funzionalità PlaylistBuilder disabilitata.")
     
 try:
-    from vixsrc_extractor import VixSrcExtractor
+    from extractors.vixsrc import VixSrcExtractor
     logger.info("✅ Modulo VixSrcExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo VixSrcExtractor non trovato. Funzionalità VixSrc disabilitata.")
 
 try:
-    from sportsonline_extractor import SportsonlineExtractor
+    from extractors.sportsonline import SportsonlineExtractor
     logger.info("✅ Modulo SportsonlineExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
@@ -117,10 +120,10 @@ class GenericHLSExtractor:
         return self.session
 
     async def extract(self, url, **kwargs):
-        # ✅ CORREZIONE: Permette anche gli URL di playlist VixSrc che non richiedono estensione.
-        # ✅ AGGIORNATO: Aggiunto 'newkso.ru' per accettare i segmenti di DLHD.
-        if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', '.ts', 'vixsrc.to/playlist', 'newkso.ru']):
-            raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd, .ts, URL VixSrc o URL newkso.ru valido)")
+        # ✅ AGGIORNATO: Rimossa validazione estensioni su richiesta utente.
+        # Accetta qualsiasi URL per evitare errori con segmenti mascherati.
+        # if not any(pattern in url.lower() for pattern in ['.m3u8', '.mpd', '.ts', '.js', '.css', '.html', '.txt', 'vixsrc.to/playlist', 'newkso.ru']):
+        #     raise ExtractorError("URL non supportato (richiesto .m3u8, .mpd, .ts, .js, .css, .html, .txt, URL VixSrc o URL newkso.ru valido)")
 
         parsed_url = urlparse(url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -169,13 +172,6 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
-            # ✅ MODIFICATO: Gestisce tutti i segmenti e sub-manifest.
-            # Aggiunto 'newkso.ru' per catturare i segmenti di DLHD.
-            elif any(ext in url.lower() for ext in ['.m3u8', '.mpd', '.ts', 'newkso.ru']) or 'vixsrc.to/playlist' in url.lower():
-                key = "hls_generic"
-                if key not in self.extractors:
-                    self.extractors[key] = GenericHLSExtractor(request_headers, proxies=GLOBAL_PROXIES)
-                return self.extractors[key]
             elif 'vixsrc.to/' in url.lower() and any(x in url for x in ['/movie/', '/tv/', '/iframe/']):
                 key = "vixsrc"
                 if key not in self.extractors:
@@ -188,7 +184,12 @@ class HLSProxy:
                     self.extractors[key] = SportsonlineExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
             else:
-                raise ExtractorError("Tipo di URL non supportato")
+                # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
+                # Questo permette di gestire estensioni sconosciute o URL senza estensione.
+                key = "hls_generic"
+                if key not in self.extractors:
+                    self.extractors[key] = GenericHLSExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
         except (NameError, TypeError) as e:
             raise ExtractorError(f"Estrattore non disponibile - modulo mancante: {e}")
 
@@ -248,9 +249,9 @@ class HLSProxy:
                 extractor_name = "VavooExtractor"
 
             if restarting:
-                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio per forzare l'aggiornamento...")
-                await asyncio.sleep(1)  # Attesa per il flush dei log
-                os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
+                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio disabilitato per stabilità.")
+                # await asyncio.sleep(1)  # Attesa per il flush dei log
+                # os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
 
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
