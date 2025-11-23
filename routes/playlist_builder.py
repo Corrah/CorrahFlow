@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import base64
 import urllib.parse
 from aiohttp import ClientSession, ClientTimeout
 from typing import Iterator, List, Dict
@@ -15,12 +16,33 @@ class PlaylistBuilder:
     
     def rewrite_m3u_links_streaming(self, m3u_lines_iterator: Iterator[str], base_url: str) -> Iterator[str]:
         current_ext_headers: Dict[str, str] = {}
+        current_clearkey = None  # Store clearkey from KODIPROP
         
         for line_with_newline in m3u_lines_iterator:
             line_content = line_with_newline.rstrip('\n')
             logical_line = line_content.strip()
             
             is_header_tag = False
+            
+            # Extract KODIPROP license_key and remove all KODIPROP tags
+            if logical_line.startswith('#KODIPROP:'):
+                is_header_tag = True
+                
+                # Extract clearkey from license_key tag
+                if 'inputstream.adaptive.license_key' in logical_line:
+                    try:
+                        # Format: #KODIPROP:inputstream.adaptive.license_key=KID:KEY (already in hex)
+                        value = logical_line.split('=', 1)[1]
+                        
+                        # Skip placeholder values like "0000"
+                        if value and ':' in value and value != '0000':
+                            current_clearkey = value
+                    except Exception as e:
+                        logger.error(f"⚠️ Error parsing KODIPROP license_key '{logical_line}': {e}")
+                
+                # Don't yield ANY KODIPROP line (remove all from output)
+                continue
+            
             if logical_line.startswith('#EXTVLCOPT:'):
                 is_header_tag = True
                 try:
@@ -75,6 +97,11 @@ class PlaylistBuilder:
                 else:
                     encoded_url = urllib.parse.quote(logical_line, safe='')
                     processed_url_content = f"{base_url}/proxy/manifest.m3u8?url={encoded_url}"
+                
+                # Add clearkey parameter if available
+                if current_clearkey:
+                    processed_url_content += f"&clearkey={current_clearkey}"
+                    current_clearkey = None  # Reset after use
                 
                 if current_ext_headers:
                     header_params_str = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in current_ext_headers.items()])
