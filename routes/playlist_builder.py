@@ -133,38 +133,141 @@ class PlaylistBuilder:
             raise
         return lines
 
-    async def async_generate_combined_playlist(self, playlist_definitions: List[str], base_url: str):
-        playlist_urls = []
-        for definition in playlist_definitions:
-            if '&' in definition:
-                parts = definition.split('&', 1)
-                playlist_url_str = parts[1] if len(parts) > 1 else parts[0]
-            else:
-                playlist_url_str = definition
-            playlist_urls.append(playlist_url_str)
+    def parse_playlist_items(self, lines: List[str]) -> List[List[str]]:
+        """Raggruppa le righe in elementi (canali)."""
+        items = []
+        current_item = []
         
-        results = await asyncio.gather(*[self.async_download_m3u_playlist(url) for url in playlist_urls], return_exceptions=True)
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('#EXTM3U') or stripped.startswith('#EXT-X-VERSION'):
+                continue
+                
+            current_item.append(line)
+            # Se la riga non è un commento/direttiva e non è vuota, è l'URL (fine item)
+            if stripped and not stripped.startswith('#'):
+                items.append(current_item)
+                current_item = []
+        
+        # Gestione eventuali righe orfane alla fine
+        if current_item:
+            items.append(current_item)
+            
+        return items
+
+    def get_item_name(self, item_lines: List[str]) -> str:
+        """Estrae il nome del canale dagli attributi EXTINF."""
+        for l in item_lines:
+            if l.startswith('#EXTINF:'):
+                # Il nome è solitamente dopo l'ultima virgola
+                parts = l.rsplit(',', 1)
+                if len(parts) > 1:
+                    return parts[1].strip()
+        return ""
+
+    async def async_generate_combined_playlist(self, playlist_definitions: List[str], base_url: str):
+        playlist_configs = []
+        for definition in playlist_definitions:
+            # Supporto vecchio formato con & (legacy) e nuovo formato con |
+            if '|' in definition:
+                parts = definition.split('|')
+                url = parts[0]
+                options = {}
+                for part in parts[1:]:
+                    if '=' in part:
+                        k, v = part.split('=', 1)
+                        options[k.lower()] = v.lower() == 'true'
+                playlist_configs.append({'url': url, 'options': options})
+            elif '&' in definition:
+                # Legacy support
+                parts = definition.split('&', 1)
+                url = parts[1] if len(parts) > 1 else parts[0]
+                playlist_configs.append({'url': url, 'options': {}})
+            else:
+                playlist_configs.append({'url': definition, 'options': {}})
+        
+        results = await asyncio.gather(*[self.async_download_m3u_playlist(cfg['url']) for cfg in playlist_configs], return_exceptions=True)
         
         first_playlist_header_handled = False
+        
+        # Buffer per gli elementi che devono essere ordinati insieme
+        # Contiene tuple: (item_lines, noproxy_flag)
+        sorted_items_buffer = []
+        
         for idx, lines in enumerate(results):
+            config = playlist_configs[idx]
+            options = config['options']
+            
             if isinstance(lines, Exception):
-                yield f"# ERROR processing playlist {playlist_urls[idx]}: {str(lines)}\n"
+                yield f"# ERROR processing playlist {config['url']}: {str(lines)}\n"
                 continue
             
             playlist_lines: List[str] = lines
-            first_line_of_this_segment = True
             
-            rewritten_lines_iter = self.rewrite_m3u_links_streaming(iter(playlist_lines), base_url)
-            for line in rewritten_lines_iter:
-                is_extm3u_line = line.strip().startswith('#EXTM3U')
-                
-                if not first_playlist_header_handled:
-                    yield line
-                    if is_extm3u_line:
-                        first_playlist_header_handled = True
-                else:
-                    if first_line_of_this_segment and is_extm3u_line:
-                        pass
-                    else:
+            # Se è la prima playlist, gestiamo l'header #EXTM3U
+            if not first_playlist_header_handled:
+                # Cerca e yielda l'header dalla prima playlist valida
+                for line in playlist_lines:
+                    if line.strip().startswith('#EXTM3U'):
                         yield line
-                first_line_of_this_segment = False
+                        first_playlist_header_handled = True
+                        break
+                if not first_playlist_header_handled:
+                    yield "#EXTM3U\n"
+                    first_playlist_header_handled = True
+
+            # Se il sort è attivo, accumuliamo nel buffer
+            if options.get('sort'):
+                items = self.parse_playlist_items(playlist_lines)
+                for item in items:
+                    sorted_items_buffer.append({
+                        'lines': item,
+                        'noproxy': options.get('noproxy', False)
+                    })
+            else:
+                # Se abbiamo un buffer pendente di elementi da ordinare, processiamolo prima
+                if sorted_items_buffer:
+                    # Ordina
+                    sorted_items_buffer.sort(key=lambda x: self.get_item_name(x['lines']).lower())
+                    
+                    # Yielda elementi bufferizzati
+                    for item_data in sorted_items_buffer:
+                        item_lines = item_data['lines']
+                        if item_data['noproxy']:
+                            iterator = iter(item_lines)
+                        else:
+                            iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url)
+                        
+                        for line in iterator:
+                            if not line.endswith('\n'): line += '\n'
+                            yield line
+                    
+                    sorted_items_buffer = []
+                
+                # Processa la playlist corrente (non ordinata)
+                if options.get('noproxy'):
+                    iterator = iter(playlist_lines)
+                else:
+                    iterator = self.rewrite_m3u_links_streaming(iter(playlist_lines), base_url)
+                
+                for line in iterator:
+                    # Salta headers globali se già gestiti
+                    if line.strip().startswith('#EXTM3U') or line.strip().startswith('#EXT-X-VERSION'):
+                        continue
+                    if not line.endswith('\n'): line += '\n'
+                    yield line
+
+        # Alla fine, se c'è ancora roba nel buffer (es. ultime playlist erano tutte sort=True)
+        if sorted_items_buffer:
+            sorted_items_buffer.sort(key=lambda x: self.get_item_name(x['lines']).lower())
+            
+            for item_data in sorted_items_buffer:
+                item_lines = item_data['lines']
+                if item_data['noproxy']:
+                    iterator = iter(item_lines)
+                else:
+                    iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url)
+                
+                for line in iterator:
+                    if not line.endswith('\n'): line += '\n'
+                    yield line
