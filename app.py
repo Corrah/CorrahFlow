@@ -31,9 +31,6 @@ logging.basicConfig(
     format='%(levelname)s:%(name)s:%(message)s'
 )
 
-# Silenzia i log di accesso di aiohttp a meno che non siano errori
-logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
-
 logger = logging.getLogger(__name__)
 
 # --- Configurazione Proxy ---
@@ -88,6 +85,13 @@ try:
     logger.info("✅ Modulo SportsonlineExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
+
+try:
+    from routes.web_player import web_player_bp
+    logger.info("✅ Modulo WebPlayer caricato.")
+except ImportError as e:
+    logger.warning(f"⚠️ Modulo WebPlayer non trovato: {e}")
+    web_player_bp = None
 
 # --- Classi Unite ---
 class ExtractorError(Exception):
@@ -1387,6 +1391,13 @@ def create_app():
     proxy = HLSProxy()
     
     app = web.Application()
+    
+    # Registra blueprint del player
+    if web_player_bp:
+        app.add_routes(web_player_bp)
+
+    # Setup static routes
+    # app.router.add_static('/static/', path='static', name='static')
     
     # Registra le route
     app.router.add_get('/', proxy.handle_root)

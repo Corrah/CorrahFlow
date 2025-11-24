@@ -88,7 +88,7 @@
             position: relative;
         }
 
-        /* Animated Background Particles */
+        /* Animated Background */
         body::before {
             content: '';
             position: fixed;
@@ -96,26 +96,23 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: 
-                radial-gradient(circle at 15% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 85% 60%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 50% 90%, rgba(6, 182, 212, 0.06) 0%, transparent 50%);
-            animation: particleFloat 30s ease-in-out infinite;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 50%);
+            animation: backgroundFloat 25s ease-in-out infinite;
             z-index: -1;
         }
 
-        @keyframes particleFloat {
-            0%, 100% { 
-                transform: translateY(0) rotate(0deg) scale(1); 
-                opacity: 0.8;
+        @keyframes backgroundFloat {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg) scale(1);
             }
-            33% { 
-                transform: translateY(-15px) rotate(2deg) scale(1.02); 
-                opacity: 1;
+            33% {
+                transform: translateY(-20px) rotate(1deg) scale(1.02);
             }
-            66% { 
-                transform: translateY(15px) rotate(-2deg) scale(0.98); 
-                opacity: 0.9;
+            66% {
+                transform: translateY(20px) rotate(-1deg) scale(0.98);
             }
         }
 
@@ -1047,25 +1044,6 @@
                     statusBanner.style.animation = 'statusPulse 2s ease-in-out infinite';
                 }, 600);
             });
-
-            // Effetto parallax leggero per il background
-            let ticking = false;
-
-            function updateParallax() {
-                const scrollTop = window.pageYOffset;
-                const rate = scrollTop * -0.5;
-                document.body.style.transform = `translate3d(0, ${rate}px, 0)`;
-                ticking = false;
-            }
-
-            function requestTick() {
-                if (!ticking) {
-                    requestAnimationFrame(updateParallax);
-                    ticking = true;
-                }
-            }
-
-            window.addEventListener('scroll', requestTick);
 
             // Intersection Observer per animazioni di entrata
             const observerOptions = {
