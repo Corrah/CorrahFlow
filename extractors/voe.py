@@ -37,7 +37,7 @@ class VoeExtractor:
             self.session = ClientSession(timeout=timeout, connector=connector, headers={'User-Agent': self.base_headers["user-agent"]})
         return self.session
 
-    async def extract(self, url: str, redirected: bool = False, **kwargs) -> dict:
+    async def extract(self, url: str, redirect_count: int = 0, **kwargs) -> dict:
         session = await self._get_session()
         async with session.get(url) as response:
             text = await response.text()
@@ -46,9 +46,9 @@ class VoeExtractor:
         redirect_pattern = r'''window\.location\.href\s*=\s*'([^']+)'''
         redirect_match = re.search(redirect_pattern, text, re.DOTALL)
         if redirect_match:
-            if redirected:
+            if redirect_count >= 5:
                 raise ExtractorError("VOE: too many redirects")
-            return await self.extract(redirect_match.group(1), redirected=True)
+            return await self.extract(redirect_match.group(1), redirect_count=redirect_count + 1)
 
         code_and_script_pattern = r'json">\["([^"]+)"]</script>\s*<script\s*src="([^"]+)'
         code_and_script_match = re.search(code_and_script_pattern, text, re.DOTALL)
