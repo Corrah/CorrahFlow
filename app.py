@@ -87,11 +87,20 @@ except ImportError:
     logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
 
 try:
-    from routes.web_player import web_player_bp
-    logger.info("✅ Modulo WebPlayer caricato.")
+    from routes.iptvplayer import iptvplayer_bp
+    logger.info("✅ Modulo iptvplayer caricato.")
 except ImportError as e:
-    logger.warning(f"⚠️ Modulo WebPlayer non trovato: {e}")
-    web_player_bp = None
+    logger.warning(f"⚠️ Modulo iptvplayer non trovato: {e}")
+    iptvplayer_bp = None
+
+try:
+    from routes.vods import vods_bp
+    logger.info("✅ Modulo vods caricato.")
+except ImportError as e:
+    logger.warning(f"⚠️ Modulo vods non trovato: {e}")
+    vods_bp = None
+
+
 
 # --- Classi Unite ---
 class ExtractorError(Exception):
@@ -496,12 +505,17 @@ class HLSProxy:
                 # Stream URL resolved
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
-                logger.warning(f"Estrazione fallita, tento di nuovo forzando l'aggiornamento: {e}")
-                result = await extractor.extract(target_url, force_refresh=True) # Forza sempre il refresh al secondo tentativo
-                stream_url = result["destination_url"]
-                stream_headers = result.get("request_headers", {})
-                # Stream URL resolved after refresh
-                return await self._proxy_stream(request, stream_url, stream_headers)
+                # Se il primo tentativo fallisce e non stiamo già forzando,
+                # proviamo una seconda volta forzando l'aggiornamento.
+                if not force_refresh:
+                    logger.warning(f"Estrazione fallita, tento di nuovo forzando l'aggiornamento: {e}")
+                    result = await extractor.extract(target_url, force_refresh=True)
+                    stream_url = result["destination_url"]
+                    stream_headers = result.get("request_headers", {})
+                    return await self._proxy_stream(request, stream_url, stream_headers)
+                else:
+                    # Se anche il tentativo forzato fallisce, solleva l'errore.
+                    raise e
             
         except Exception as e:
             # ✅ AGGIORNATO: Se un estrattore specifico (DLHD, Vavoo) fallisce, riavvia il server per forzare un aggiornamento.
@@ -1322,13 +1336,47 @@ class HLSProxy:
         }
         return web.json_response(info)
 
+    async def handle_youtube_search(self, request):
+        """Cerca su YouTube e restituisce il primo video ID trovato."""
+        query = request.query.get('q')
+        if not query:
+            return web.Response(text="Missing query parameter 'q'", status=400)
+
+        try:
+            session = await self._get_session()
+            search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+
+            async with session.get(search_url, headers=headers) as resp:
+                if resp.status != 200:
+                    return web.Response(text=f"YouTube search failed: {resp.status}", status=502)
+
+                html_content = await resp.text()
+
+                # Cerca il primo video ID nel HTML (pattern semplice)
+                # YouTube usa /watch?v=VIDEO_ID nei link
+                import re
+                video_id_match = re.search(r'/watch\?v=([a-zA-Z0-9_-]{11})', html_content)
+                if video_id_match:
+                    video_id = video_id_match.group(1)
+                    return web.json_response({'video_id': video_id})
+                else:
+                    return web.Response(text="No video found", status=404)
+
+        except Exception as e:
+            logger.error(f"❌ YouTube search error: {str(e)}")
+            return web.Response(text=f"Search error: {str(e)}", status=500)
+
     async def handle_decrypt_segment(self, request):
-        """✅ Decritta segmenti fMP4 lato server usando Python (PyCryptodome)."""  
+        """✅ Decritta segmenti fMP4 lato server usando Python (PyCryptodome)."""
         url = request.query.get('url')
         init_url = request.query.get('init_url')
         key = request.query.get('key')
         key_id = request.query.get('key_id')
-        
+
         if not url or not key or not key_id:
             return web.Response(text="Missing url, key, or key_id", status=400)
 
@@ -1354,7 +1402,7 @@ class HLSProxy:
                 if resp.status != 200:
                     logger.error(f"❌ Failed to fetch segment: {resp.status}")
                     return web.Response(status=502)
-                
+
                 segment_content = await resp.read()
 
             # --- 3. Decritta con Python (PyCryptodome) ---
@@ -1393,8 +1441,10 @@ def create_app():
     app = web.Application()
     
     # Registra blueprint del player
-    if web_player_bp:
-        app.add_routes(web_player_bp)
+    if iptvplayer_bp:
+        app.add_routes(iptvplayer_bp)
+    if vods_bp:
+        app.add_routes(vods_bp)
 
     # Setup static routes
     # app.router.add_static('/static/', path='static', name='static')
@@ -1408,6 +1458,7 @@ def create_app():
     app.router.add_get('/proxy/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/playlist', proxy.handle_playlist_request)
     app.router.add_get('/segment/{segment}', proxy.handle_ts_segment)
+    app.router.add_get('/youtube_search', proxy.handle_youtube_search)
     app.router.add_get('/decrypt/segment.mp4', proxy.handle_decrypt_segment) # ✅ NUOVO ROUTE
     
     # Route per licenze DRM (GET e POST)

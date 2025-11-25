@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -97,12 +98,16 @@
         }
 
         @keyframes backgroundFloat {
-            0%, 100% {
+
+            0%,
+            100% {
                 transform: translateY(0) rotate(0deg) scale(1);
             }
+
             33% {
                 transform: translateY(-20px) rotate(1deg) scale(1.02);
             }
+
             66% {
                 transform: translateY(20px) rotate(-1deg) scale(0.98);
             }
@@ -140,8 +145,15 @@
         }
 
         @keyframes gradientMove {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
         }
 
         .hero-subtitle {
@@ -167,8 +179,17 @@
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); box-shadow: var(--glow-primary); }
-            50% { transform: scale(1.02); box-shadow: var(--glow-secondary); }
+
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: var(--glow-primary);
+            }
+
+            50% {
+                transform: scale(1.02);
+                box-shadow: var(--glow-secondary);
+            }
         }
 
         .status-dot {
@@ -181,8 +202,13 @@
         }
 
         @keyframes glow {
-            from { box-shadow: 0 0 10px var(--neon-green); }
-            to { box-shadow: 0 0 25px var(--neon-green), 0 0 35px var(--neon-green); }
+            from {
+                box-shadow: 0 0 10px var(--neon-green);
+            }
+
+            to {
+                box-shadow: 0 0 25px var(--neon-green), 0 0 35px var(--neon-green);
+            }
         }
 
         .features-grid {
@@ -329,6 +355,7 @@
                 opacity: 0;
                 transform: translateY(30px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -340,9 +367,17 @@
             animation-fill-mode: both;
         }
 
-        .feature-card:nth-child(1) { animation-delay: 0.1s; }
-        .feature-card:nth-child(2) { animation-delay: 0.2s; }
-        .feature-card:nth-child(3) { animation-delay: 0.3s; }
+        .feature-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .feature-card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .feature-card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -380,11 +415,13 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="hero-section">
             <h1 class="hero-title">HLS Proxy Server</h1>
-            <p class="hero-subtitle">Server proxy avanzato per streaming HLS, IPTV e gestione playlist con supporto universale</p>
+            <p class="hero-subtitle">Server proxy avanzato per streaming HLS, IPTV e gestione playlist con supporto
+                universale</p>
             <div class="status-indicator">
                 <div class="status-dot"></div>
                 <span>Server Operativo</span>
@@ -395,19 +432,22 @@
             <div class="feature-card">
                 <div class="feature-icon">🔄</div>
                 <h3 class="feature-title">Proxy Universale</h3>
-                <p class="feature-description">Supporto completo per HLS (.m3u8), playlist M3U, streaming MPD (DASH) e flussi DLHD dinamici con ottimizzazione automatica</p>
+                <p class="feature-description">Supporto completo per HLS (.m3u8), playlist M3U, streaming MPD (DASH) e
+                    flussi DLHD dinamici con ottimizzazione automatica</p>
             </div>
 
             <div class="feature-card">
                 <div class="feature-icon">🎬</div>
                 <h3 class="feature-title">Estrazione Avanzata</h3>
-                <p class="feature-description">Risoluzione automatica di link Vavoo e DaddyLive HD con bypass delle restrizioni e autenticazione API integrata</p>
+                <p class="feature-description">Risoluzione automatica di link Vavoo e DaddyLive HD con bypass delle
+                    restrizioni e autenticazione API integrata</p>
             </div>
 
             <div class="feature-card">
                 <div class="feature-icon">📡</div>
                 <h3 class="feature-title">Playlist Builder</h3>
-                <p class="feature-description">Combina multiple playlist in un'unica fonte M3U8 con proxy integrato e compatibilità universale per tutti i player IPTV</p>
+                <p class="feature-description">Combina multiple playlist in un'unica fonte M3U8 con proxy integrato e
+                    compatibilità universale per tutti i player IPTV</p>
             </div>
         </div>
 
@@ -416,9 +456,13 @@
                 <span>🏗️</span>
                 <span>Playlist Builder</span>
             </a>
-            <a href="player" class="cta-button cta-primary">
+            <a href="iptvplayer" class="cta-button cta-primary">
                 <span>🎥</span>
-                <span>Web Player</span>
+                <span>IPTV Player</span>
+            </a>
+            <a href="movies" class="cta-button cta-primary">
+                <span>🎬</span>
+                <span>Film & Serie Tv</span>
             </a>
             <a href="info" class="cta-button cta-secondary">
                 <span>📋</span>
@@ -429,7 +473,7 @@
 
     <script>
         // Aggiungi effetti di interattività
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Effetto parallax leggero per le card
             const cards = document.querySelectorAll('.feature-card');
 
@@ -454,7 +498,7 @@
 
             // Effetto click sulle card
             cards.forEach(card => {
-                card.addEventListener('click', function() {
+                card.addEventListener('click', function () {
                     this.style.transform = 'scale(0.95)';
                     setTimeout(() => {
                         this.style.transform = '';
@@ -473,4 +517,5 @@
         });
     </script>
 </body>
+
 </html>
