@@ -652,6 +652,9 @@ class HLSProxy:
 
     async def handle_key_request(self, request):
         """✅ NUOVO: Gestisce richieste per chiavi AES-128"""
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
         # 1. Gestione chiave statica (da MPD converter)
         static_key = request.query.get('static_key')
         if static_key:
@@ -1237,10 +1240,14 @@ class HLSProxy:
                 if any(ext in line for ext in ['.m3u8', '.css']):
                     proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
-                # Tutti gli altri (segmenti .ts, .html, etc.) vengono inviati allo stesso endpoint,
-                # ma la logica in _proxy_stream li tratterà come stream diretti e non come manifest da processare.
+                # Tutti gli altri (segmenti .ts, .html, etc.) vengono inviati a endpoint con estensione corretta
                 else:
-                    proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
+                    # Determina l'estensione appropriata
+                    ext = '.ts' # Default
+                    if '.m4s' in line: ext = '.m4s'
+                    elif '.mp4' in line: ext = '.mp4'
+                    
+                    proxy_url = f"{proxy_base}/proxy/hls/segment{ext}?d={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
 
             else:
@@ -1394,7 +1401,10 @@ class HLSProxy:
         return web.json_response(info)
 
     async def handle_decrypt_segment(self, request):
-        """✅ Decritta segmenti fMP4 lato server usando Python (PyCryptodome)."""  
+        """✅ Decritta segmenti fMP4 lato server usando Python (PyCryptodome)."""
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
         url = request.query.get('url')
         init_url = request.query.get('init_url')
         key = request.query.get('key')
@@ -1404,6 +1414,13 @@ class HLSProxy:
             return web.Response(text="Missing url, key, or key_id", status=400)
 
         try:
+            # Ricostruisce gli headers per le richieste upstream
+            headers = {}
+            for param_name, param_value in request.query.items():
+                if param_name.startswith('h_'):
+                    header_name = param_name[2:].replace('_', '-')
+                    headers[header_name] = param_value
+
             session = await self._get_session()
 
             # --- 1. Scarica Initialization Segment (con cache) ---
@@ -1412,7 +1429,7 @@ class HLSProxy:
                 if init_url in self.init_cache:
                     init_content = self.init_cache[init_url]
                 else:
-                    async with session.get(init_url) as resp:
+                    async with session.get(init_url, headers=headers) as resp:
                         if resp.status == 200:
                             init_content = await resp.read()
                             self.init_cache[init_url] = init_content
@@ -1421,7 +1438,7 @@ class HLSProxy:
                             return web.Response(status=502)
 
             # --- 2. Scarica Media Segment ---
-            async with session.get(url) as resp:
+            async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     logger.error(f"❌ Failed to fetch segment: {resp.status}")
                     return web.Response(status=502)
@@ -1472,6 +1489,11 @@ def create_app():
     app.router.add_get('/proxy/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/hls/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/mpd/manifest.m3u8', proxy.handle_proxy_request)
+    # ✅ NUOVO: Route per segmenti con estensioni corrette per compatibilità player
+    app.router.add_get('/proxy/hls/segment.ts', proxy.handle_proxy_request)
+    app.router.add_get('/proxy/hls/segment.m4s', proxy.handle_proxy_request)
+    app.router.add_get('/proxy/hls/segment.mp4', proxy.handle_proxy_request)
+    
     app.router.add_get('/playlist', proxy.handle_playlist_request)
     app.router.add_get('/segment/{segment}', proxy.handle_ts_segment)
     app.router.add_get('/decrypt/segment.mp4', proxy.handle_decrypt_segment) # ✅ NUOVO ROUTE
