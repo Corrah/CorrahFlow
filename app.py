@@ -119,6 +119,12 @@ try:
 except ImportError:
     logger.warning("⚠️ Modulo VoeExtractor non trovato.")
 
+try:
+    from extractors.streamtape import StreamtapeExtractor
+    logger.info("✅ Modulo StreamtapeExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo StreamtapeExtractor non trovato.")
+
 # --- Classi Unite ---
 class ExtractorError(Exception):
     """Eccezione personalizzata per errori di estrazione"""
@@ -489,6 +495,11 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
+            elif "streamtape.com" in url or "streamtape.to" in url or "streamtape.net" in url:
+                key = "streamtape"
+                if key not in self.extractors:
+                    self.extractors[key] = StreamtapeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
             else:
                 # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
                 # Questo permette di gestire estensioni sconosciute o URL senza estensione.
@@ -848,6 +859,18 @@ class HLSProxy:
                 connector_kwargs['proxy'] = proxy
                 logger.info(f"Utilizzo del proxy {proxy} per lo stream.")
 
+            # ✅ FIX: Normalizza gli header critici (User-Agent, Referer) in Title-Case
+            # Alcuni server (es. Vavoo) potrebbero rifiutare header tutti minuscoli
+            for key in list(headers.keys()):
+                if key.lower() == 'user-agent':
+                    headers['User-Agent'] = headers.pop(key)
+                elif key.lower() == 'referer':
+                    headers['Referer'] = headers.pop(key)
+                elif key.lower() == 'origin':
+                    headers['Origin'] = headers.pop(key)
+                elif key.lower() == 'authorization':
+                    headers['Authorization'] = headers.pop(key)
+
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(stream_url, headers=headers, **connector_kwargs) as resp:
@@ -969,6 +992,11 @@ class HLSProxy:
                         if header in resp.headers:
                             response_headers[header] = resp.headers[header]
                     
+                    # ✅ FIX: Forza Content-Type per segmenti .ts se il server non lo invia correttamente
+                    # Molti player (es. ExoPlayer) richiedono video/MP2T per i file .ts
+                    if (stream_url.endswith('.ts') or request.path.endswith('.ts')) and 'video/mp2t' not in response_headers.get('content-type', '').lower():
+                        response_headers['Content-Type'] = 'video/MP2T'
+
                     response_headers['Access-Control-Allow-Origin'] = '*'
                     response_headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS'
                     response_headers['Access-Control-Allow-Headers'] = 'Range, Content-Type'
@@ -1237,18 +1265,11 @@ class HLSProxy:
                 encoded_url = urllib.parse.quote(absolute_url, safe='')
                 
                 # I sub-manifest o URL che potrebbero contenere altri manifest vengono inviati all'endpoint proxy.
-                if any(ext in line for ext in ['.m3u8', '.css']):
-                    proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
-                    rewritten_lines.append(proxy_url)
-                # Tutti gli altri (segmenti .ts, .html, etc.) vengono inviati a endpoint con estensione corretta
-                else:
-                    # Determina l'estensione appropriata
-                    ext = '.ts' # Default
-                    if '.m4s' in line: ext = '.m4s'
-                    elif '.mp4' in line: ext = '.mp4'
-                    
-                    proxy_url = f"{proxy_base}/proxy/hls/segment{ext}?d={encoded_url}{header_params}"
-                    rewritten_lines.append(proxy_url)
+                # ✅ RIPRISTINO LOGICA ORIGINALE (SEMPLIFICATA)
+                # Usiamo l'endpoint standard di EasyProxy per tutto, garantendo la massima compatibilità
+                # con la logica che "già funzionava".
+                proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                rewritten_lines.append(proxy_url)
 
             else:
                 # Aggiunge tutti gli altri tag (es. #EXTINF, #EXT-X-ENDLIST)
@@ -1339,6 +1360,13 @@ class HLSProxy:
             logger.error(f"❌ Errore critico: impossibile caricare 'info.html': {e}")
             return web.Response(text="<h1>Errore 500</h1><p>Impossibile caricare la pagina info.</p>", status=500, content_type='text/html')
 
+    async def handle_favicon(self, request):
+        """Serve il file favicon.ico."""
+        favicon_path = os.path.join(os.path.dirname(__file__), 'static', 'favicon.ico')
+        if os.path.exists(favicon_path):
+            return web.FileResponse(favicon_path)
+        return web.Response(status=404)
+
     async def handle_options(self, request):
         """Gestisce richieste OPTIONS per CORS"""
         headers = {
@@ -1372,6 +1400,7 @@ class HLSProxy:
                 "sportsonline_extractor": SportsonlineExtractor is not None,
                 "mixdrop_extractor": MixdropExtractor is not None,
                 "voe_extractor": VoeExtractor is not None,
+                "streamtape_extractor": StreamtapeExtractor is not None,
             },
             "proxy_config": {
                 "global": f"{len(GLOBAL_PROXIES)} proxies caricati",
@@ -1482,6 +1511,8 @@ def create_app():
     
     # Registra le route
     app.router.add_get('/', proxy.handle_root)
+    app.router.add_get('/favicon.ico', proxy.handle_favicon) # ✅ Route Favicon
+    app.router.add_static('/static', 'static') # ✅ Route Static Files
     app.router.add_get('/builder', proxy.handle_builder)
     app.router.add_get('/info', proxy.handle_info_page)
     app.router.add_get('/api/info', proxy.handle_api_info)
