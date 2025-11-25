@@ -99,25 +99,25 @@ class DLHDExtractor:
     def _get_headers_for_url(self, url: str, base_headers: dict) -> dict:
         """Applica headers specifici per newkso.ru automaticamente"""
         headers = base_headers.copy()
-        parsed_url = urlparse(url)
+        # parsed_url = urlparse(url)
         
-        if "newkso.ru" in parsed_url.netloc:
-            if self._iframe_context:
-                iframe_origin = f"https://{urlparse(self._iframe_context).netloc}"
-                newkso_headers = {
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-                    'Referer': self._iframe_context,
-                    'Origin': iframe_origin
-                }
-                logger.info(f"Applied newkso.ru headers with iframe context for: {url}")
-            else:
-                newkso_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                newkso_headers = {
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-                    'Referer': newkso_origin,
-                    'Origin': newkso_origin
-                }
-            headers.update(newkso_headers)
+        # if "newkso.ru" in parsed_url.netloc:
+        #     if self._iframe_context:
+        #         iframe_origin = f"https://{urlparse(self._iframe_context).netloc}"
+        #         newkso_headers = {
+        #             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        #             'Referer': self._iframe_context,
+        #             'Origin': iframe_origin
+        #         }
+        #         logger.info(f"Applied newkso.ru headers with iframe context for: {url}")
+        #     else:
+        #         newkso_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        #         newkso_headers = {
+        #             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        #             'Referer': newkso_origin,
+        #             'Origin': newkso_origin
+        #         }
+        #     headers.update(newkso_headers)
         
         return headers
 
@@ -158,7 +158,7 @@ class DLHDExtractor:
         """✅ Richieste con sessione persistente per evitare anti-bot"""
         final_headers = self._get_headers_for_url(url, headers or {})
         # Aggiungiamo zstd agli header accettati per segnalare al server che lo supportiamo
-        final_headers['Accept-Encoding'] = 'gzip, deflate, br, zstd'
+        final_headers['Accept-Encoding'] = 'gzip, deflate, br'
         
         for attempt in range(retries):
             try:
