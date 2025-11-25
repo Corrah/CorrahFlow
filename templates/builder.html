@@ -135,33 +135,6 @@
             text-align: center;
             margin-bottom: var(--spacing-2xl);
             padding: var(--spacing-xl) 0;
-            position: relative;
-        }
-
-        .home-button {
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            padding: var(--spacing-sm) var(--spacing-lg);
-            background: var(--surface-glass);
-            border: 1px solid var(--border-primary);
-            border-radius: var(--border-radius);
-            color: var(--text-primary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: var(--transition-normal);
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-sm);
-            backdrop-filter: blur(20px);
-        }
-
-        .home-button:hover {
-            background: var(--surface-elevated);
-            border-color: var(--border-accent);
-            transform: translateY(-50%) translateX(4px);
-            box-shadow: var(--glow-primary);
         }
 
         .main-title {
@@ -652,10 +625,6 @@
 <body>
     <div class="container">
         <div class="header">
-            <a href="/" class="home-button">
-                <span>🏠</span>
-                <span>Home</span>
-            </a>
             <h1 class="main-title">Playlist Builder</h1>
             <p class="main-subtitle">Combina multiple playlist IPTV generando un link unificato per l'endpoint /playlist
             </p>
