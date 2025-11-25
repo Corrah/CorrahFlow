@@ -519,6 +519,8 @@ class HLSProxy:
         try:
             target_url = request.query.get('url') or request.query.get('d')
             force_refresh = request.query.get('force', 'false').lower() == 'true'
+            redirect_stream = request.query.get('redirect_stream', 'true').lower() == 'true'
+            
             if not target_url:
                 return web.Response(text="Parametro 'url' o 'd' mancante", status=400)
             
@@ -537,6 +539,32 @@ class HLSProxy:
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
                 
+                # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
+                if not redirect_stream:
+                    # Costruisci l'URL del proxy per questo stream
+                    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                    host = request.headers.get('X-Forwarded-Host', request.host)
+                    proxy_base = f"{scheme}://{host}"
+                    
+                    # Determina l'endpoint corretto in base al tipo di contenuto (semplificazione)
+                    endpoint = "/proxy/hls/manifest.m3u8"
+                    if ".mpd" in stream_url:
+                        endpoint = "/proxy/mpd/manifest.m3u8"
+                        
+                    encoded_url = urllib.parse.quote(stream_url, safe='')
+                    header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
+                    
+                    proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
+                    
+                    response_data = {
+                        "destination_url": stream_url,
+                        "request_headers": stream_headers,
+                        "mediaflow_endpoint": result.get("mediaflow_endpoint", "hls_proxy"),
+                        "mediaflow_proxy_url": proxy_url,
+                        "query_params": {}
+                    }
+                    return web.json_response(response_data)
+
                 # Aggiungi headers personalizzati da query params
                 for param_name, param_value in request.query.items():
                     if param_name.startswith('h_'):
