@@ -604,15 +604,16 @@ class HLSProxy:
     async def handle_extractor_request(self, request):
         """
         Endpoint compatibile con MediaFlow-Proxy per ottenere informazioni sullo stream.
-        Restituisce sempre un JSON con l'URL finale e gli headers.
+        Supporta redirect_stream per ridirezionare direttamente al proxy.
         """
         if not check_password(request):
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         try:
-            url = request.query.get('url')
+            # Supporta sia 'url' che 'd' come parametro
+            url = request.query.get('url') or request.query.get('d')
             if not url:
-                return web.Response(text="Missing url parameter", status=400)
+                return web.Response(text="Missing url or d parameter", status=400)
 
             # Decodifica URL se necessario
             try:
@@ -620,18 +621,51 @@ class HLSProxy:
             except:
                 pass
 
+            redirect_stream = request.query.get('redirect_stream', 'false').lower() == 'true'
+
             extractor = await self.get_extractor(url, dict(request.headers))
             result = await extractor.extract(url)
             
             stream_url = result["destination_url"]
             stream_headers = result.get("request_headers", {})
             
+            # Costruisci l'URL del proxy per questo stream
+            scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+            host = request.headers.get('X-Forwarded-Host', request.host)
+            proxy_base = f"{scheme}://{host}"
+            
+            # Determina l'endpoint corretto
+            endpoint = "/proxy/hls/manifest.m3u8"
+            if ".mpd" in stream_url:
+                endpoint = "/proxy/mpd/manifest.m3u8"
+            elif ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
+                 # Per file statici, usiamo comunque il proxy hls/manifest se vogliamo supportare headers,
+                 # ma se è un file diretto potremmo voler usare un endpoint diverso?
+                 # EasyProxy usa /proxy/hls/manifest.m3u8 anche per file diretti (li tratta come stream)
+                 # oppure /proxy/stream se esistesse.
+                 # Manteniamo /proxy/hls/manifest.m3u8 che sembra gestire tutto in _proxy_stream
+                 pass
+
+            encoded_url = urllib.parse.quote(stream_url, safe='')
+            header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
+            
+            # Aggiungi api_password se presente
+            api_password = request.query.get('api_password')
+            if api_password:
+                header_params += f"&api_password={api_password}"
+
+            proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
+
+            if redirect_stream:
+                return web.HTTPFound(proxy_url)
+
             # Formato risposta compatibile con MediaFlow-Proxy
             response_data = {
                 "url": stream_url,
                 "headers": stream_headers,
                 "user_agent": stream_headers.get("User-Agent", "Mozilla/5.0"),
-                "cookie": stream_headers.get("Cookie", "")
+                "cookie": stream_headers.get("Cookie", ""),
+                "mediaflow_proxy_url": proxy_url
             }
             
             return web.json_response(response_data)
