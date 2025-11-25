@@ -41,7 +41,7 @@ class MixdropExtractor:
         if "club" in url:
             url = url.replace("club", "ps").split("/2")[0]
 
-        headers = {"accept-language": "en-US,en;q=0.5"}
+        headers = {"accept-language": "en-US,en;q=0.5", "referer": url}
         patterns = [r'MDCore.wurl ?= ?"(.*?)"']
 
         session = await self._get_session()
