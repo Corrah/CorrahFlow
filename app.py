@@ -601,6 +601,45 @@ class HLSProxy:
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
 
+    async def handle_extractor_request(self, request):
+        """
+        Endpoint compatibile con MediaFlow-Proxy per ottenere informazioni sullo stream.
+        Restituisce sempre un JSON con l'URL finale e gli headers.
+        """
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
+        try:
+            url = request.query.get('url')
+            if not url:
+                return web.Response(text="Missing url parameter", status=400)
+
+            # Decodifica URL se necessario
+            try:
+                url = urllib.parse.unquote(url)
+            except:
+                pass
+
+            extractor = await self.get_extractor(url, dict(request.headers))
+            result = await extractor.extract(url)
+            
+            stream_url = result["destination_url"]
+            stream_headers = result.get("request_headers", {})
+            
+            # Formato risposta compatibile con MediaFlow-Proxy
+            response_data = {
+                "url": stream_url,
+                "headers": stream_headers,
+                "user_agent": stream_headers.get("User-Agent", "Mozilla/5.0"),
+                "cookie": stream_headers.get("Cookie", "")
+            }
+            
+            return web.json_response(response_data)
+
+        except Exception as e:
+            logger.error(f"Error in extractor request: {e}")
+            return web.Response(text=str(e), status=500)
+
     async def handle_license_request(self, request):
         """✅ NUOVO: Gestisce le richieste di licenza DRM (ClearKey e Proxy)"""
         try:
