@@ -677,11 +677,11 @@ class HLSProxy:
 
             # Formato risposta compatibile con MediaFlow-Proxy
             response_data = {
-                "url": stream_url,
-                "headers": stream_headers,
-                "user_agent": stream_headers.get("User-Agent", "Mozilla/5.0"),
-                "cookie": stream_headers.get("Cookie", ""),
-                "mediaflow_proxy_url": proxy_url
+                "destination_url": stream_url,
+                "request_headers": stream_headers,
+                "mediaflow_endpoint": mediaflow_endpoint,
+                "mediaflow_proxy_url": proxy_url,
+                "query_params": {}
             }
             
             logger.info(f"📤 Returning JSON response")
