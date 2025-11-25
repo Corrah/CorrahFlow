@@ -28,13 +28,25 @@ load_dotenv() # Carica le variabili dal file .env
 # non venga silenziato, permettendo la visualizzazione dei log di accesso.
 logging.basicConfig(
     level=logging.INFO,
-    format='%(levelname)s:%(name)s:%(message)s'
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 
-# Silenzia i log di accesso di aiohttp a meno che non siano errori
-logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
+# Abilita i log di accesso per il debug
+logging.getLogger('aiohttp.access').setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
+
+# --- Middleware per Logging ---
+@web.middleware
+async def request_logger_middleware(request, handler):
+    logger.info(f"🌐 REQUEST: {request.method} {request.path} qs={request.query_string}")
+    try:
+        response = await handler(request)
+        logger.info(f"✅ RESPONSE: {response.status} for {request.path}")
+        return response
+    except Exception as e:
+        logger.error(f"❌ EXCEPTION in handler: {e}")
+        raise
 
 # --- Configurazione Proxy ---
 def parse_proxies(proxy_env_var: str) -> list:
@@ -490,7 +502,7 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = MixdropExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
-            elif "voe.sx" in url or "voe.to" in url:
+            elif any(d in url for d in ["voe.sx", "voe.to", "voe.st", "voe.eu", "voe.la", "voe-network.net"]):
                 key = "voe"
                 if key not in self.extractors:
                     self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
@@ -606,7 +618,11 @@ class HLSProxy:
         Endpoint compatibile con MediaFlow-Proxy per ottenere informazioni sullo stream.
         Supporta redirect_stream per ridirezionare direttamente al proxy.
         """
+        # Log request details for debugging
+        logger.info(f"📥 Extractor Request: {request.url}")
+        
         if not check_password(request):
+            logger.warning("⛔ Unauthorized extractor request")
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         try:
@@ -622,13 +638,17 @@ class HLSProxy:
                 pass
 
             redirect_stream = request.query.get('redirect_stream', 'false').lower() == 'true'
+            logger.info(f"🔍 Extracting: {url} (Redirect: {redirect_stream})")
 
             extractor = await self.get_extractor(url, dict(request.headers))
             result = await extractor.extract(url)
             
             stream_url = result["destination_url"]
             stream_headers = result.get("request_headers", {})
+            mediaflow_endpoint = result.get("mediaflow_endpoint", "hls_proxy")
             
+            logger.info(f"✅ Extraction success: {stream_url[:50]}... Endpoint: {mediaflow_endpoint}")
+
             # Costruisci l'URL del proxy per questo stream
             scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             host = request.headers.get('X-Forwarded-Host', request.host)
@@ -636,15 +656,10 @@ class HLSProxy:
             
             # Determina l'endpoint corretto
             endpoint = "/proxy/hls/manifest.m3u8"
-            if ".mpd" in stream_url:
+            if mediaflow_endpoint == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
+                 endpoint = "/proxy/stream"
+            elif ".mpd" in stream_url:
                 endpoint = "/proxy/mpd/manifest.m3u8"
-            elif ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
-                 # Per file statici, usiamo comunque il proxy hls/manifest se vogliamo supportare headers,
-                 # ma se è un file diretto potremmo voler usare un endpoint diverso?
-                 # EasyProxy usa /proxy/hls/manifest.m3u8 anche per file diretti (li tratta come stream)
-                 # oppure /proxy/stream se esistesse.
-                 # Manteniamo /proxy/hls/manifest.m3u8 che sembra gestire tutto in _proxy_stream
-                 pass
 
             encoded_url = urllib.parse.quote(stream_url, safe='')
             header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
@@ -657,6 +672,7 @@ class HLSProxy:
             proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
 
             if redirect_stream:
+                logger.info(f"↪️ Redirecting to: {proxy_url}")
                 return web.HTTPFound(proxy_url)
 
             # Formato risposta compatibile con MediaFlow-Proxy
@@ -668,10 +684,13 @@ class HLSProxy:
                 "mediaflow_proxy_url": proxy_url
             }
             
+            logger.info(f"📤 Returning JSON response")
             return web.json_response(response_data)
 
         except Exception as e:
-            logger.error(f"Error in extractor request: {e}")
+            logger.error(f"❌ Error in extractor request: {e}")
+            import traceback
+            traceback.print_exc()
             return web.Response(text=str(e), status=500)
 
     async def handle_license_request(self, request):
@@ -1608,7 +1627,7 @@ def create_app():
     """Crea e configura l'applicazione aiohttp."""
     proxy = HLSProxy()
     
-    app = web.Application()
+    app = web.Application(middlewares=[request_logger_middleware])
     
     # Registra le route
     app.router.add_get('/', proxy.handle_root)
@@ -1627,6 +1646,8 @@ def create_app():
     app.router.add_get('/proxy/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/hls/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/mpd/manifest.m3u8', proxy.handle_proxy_request)
+    # ✅ NUOVO: Endpoint generico per stream (compatibilità MFP)
+    app.router.add_get('/proxy/stream', proxy.handle_proxy_request)
     # ✅ NUOVO: Endpoint compatibilità MFP per estrazione
     app.router.add_get('/extractor/video', proxy.handle_extractor_request)
     
