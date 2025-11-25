@@ -1309,7 +1309,19 @@ class HLSProxy:
                 return '\n'.join(rewritten_lines)
 
         # Logica standard per tutti gli altri stream
-        header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+        # ✅ FIX: Assicuriamoci che il Referer originale venga preservato nei parametri h_
+        # Se stream_headers contiene già un Referer (es. da VOE), usiamo quello.
+        # Altrimenti, se non c'è, potremmo voler usare l'original_channel_url o il base_url,
+        # ma per VOE è CRUCIALE che il Referer sia quello del sito embed (walterprettytheir.com), non del CDN.
+        
+        # Filtriamo gli header da passare come parametri
+        params_dict = {}
+        for key, value in stream_headers.items():
+            if key.lower() in ['user-agent', 'referer', 'origin', 'authorization', 'cookie']:
+                params_dict[key] = value
+        
+        # Costruiamo la stringa dei parametri
+        header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in params_dict.items()])
         
         if api_password:
             header_params += f"&api_password={api_password}"
