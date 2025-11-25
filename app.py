@@ -1540,7 +1540,13 @@ def create_app():
     # Registra le route
     app.router.add_get('/', proxy.handle_root)
     app.router.add_get('/favicon.ico', proxy.handle_favicon) # ✅ Route Favicon
-    app.router.add_static('/static', 'static') # ✅ Route Static Files
+    
+    # ✅ Route Static Files (con path assoluto e creazione automatica)
+    static_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    if not os.path.exists(static_path):
+        os.makedirs(static_path)
+    app.router.add_static('/static', static_path)
+    
     app.router.add_get('/builder', proxy.handle_builder)
     app.router.add_get('/info', proxy.handle_info_page)
     app.router.add_get('/api/info', proxy.handle_api_info)
@@ -1548,6 +1554,9 @@ def create_app():
     app.router.add_get('/proxy/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/hls/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/mpd/manifest.m3u8', proxy.handle_proxy_request)
+    # ✅ NUOVO: Endpoint compatibilità MFP per estrazione
+    app.router.add_get('/extractor/video', proxy.handle_extractor_request)
+    
     # ✅ NUOVO: Route per segmenti con estensioni corrette per compatibilità player
     app.router.add_get('/proxy/hls/segment.ts', proxy.handle_proxy_request)
     app.router.add_get('/proxy/hls/segment.m4s', proxy.handle_proxy_request)
