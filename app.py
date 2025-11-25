@@ -27,26 +27,15 @@ load_dotenv() # Carica le variabili dal file .env
 # ✅ CORREZIONE: Imposta un formato standard e assicurati che il logger 'aiohttp.access'
 # non venga silenziato, permettendo la visualizzazione dei log di accesso.
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 
-# Abilita i log di accesso per il debug
-logging.getLogger('aiohttp.access').setLevel(logging.INFO)
+# Silenzia i log di accesso di aiohttp a meno che non siano errori
+logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
-
-# --- Middleware per Logging ---
-@web.middleware
-async def request_logger_middleware(request, handler):
-    logger.info(f"🌐 REQUEST: {request.method} {request.path} qs={request.query_string}")
-    try:
-        response = await handler(request)
-        logger.info(f"✅ RESPONSE: {response.status} for {request.path}")
-        return response
-    except Exception as e:
-        logger.error(f"❌ EXCEPTION in handler: {e}")
-        raise
+logger.setLevel(logging.INFO)
 
 # --- Configurazione Proxy ---
 def parse_proxies(proxy_env_var: str) -> list:
@@ -684,7 +673,7 @@ class HLSProxy:
                 "query_params": {}
             }
             
-            logger.info(f"📤 Returning JSON response")
+            logger.info(f"✅ Extractor OK: {url} -> {stream_url[:50]}...")
             return web.json_response(response_data)
 
         except Exception as e:
@@ -901,7 +890,7 @@ class HLSProxy:
                 else:
                     segment_url = f"{base_url.rsplit('/', 1)[0]}/{segment_name}"
             
-            logger.info(f"📦 Proxy Segment: {segment_name} -> {segment_url}")
+            logger.info(f"📦 Proxy Segment: {segment_name}")
             
             # Gestisce la risposta del proxy per il segmento
             return await self._proxy_segment(request, segment_url, {
@@ -927,7 +916,7 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                logger.info(f"Utilizzo del proxy {proxy} per il segmento .ts.")
+                # logger.info(f"Utilizzo del proxy {proxy} per il segmento .ts.")
 
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
@@ -977,7 +966,7 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                logger.info(f"Utilizzo del proxy {proxy} per lo stream.")
+                # logger.info(f"Utilizzo del proxy {proxy} per lo stream.")
 
             # ✅ FIX: Normalizza gli header critici (User-Agent, Referer) in Title-Case
             # Alcuni server (es. Vavoo) potrebbero rifiutare header tutti minuscoli
@@ -1639,7 +1628,7 @@ def create_app():
     """Crea e configura l'applicazione aiohttp."""
     proxy = HLSProxy()
     
-    app = web.Application(middlewares=[request_logger_middleware])
+    app = web.Application()
     
     # Registra le route
     app.router.add_get('/', proxy.handle_root)
