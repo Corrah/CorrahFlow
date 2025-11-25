@@ -52,6 +52,24 @@ if GLOBAL_PROXIES: logging.info(f"🌍 Caricati {len(GLOBAL_PROXIES)} proxy glob
 if VAVOO_PROXIES: logging.info(f"🎬 Caricati {len(VAVOO_PROXIES)} proxy Vavoo.")
 if DLHD_PROXIES: logging.info(f"📺 Caricati {len(DLHD_PROXIES)} proxy DLHD.")
 
+API_PASSWORD = os.environ.get("API_PASSWORD")
+
+def check_password(request):
+    """Verifica la password API se impostata."""
+    if not API_PASSWORD:
+        return True
+    
+    # Check query param
+    api_password_param = request.query.get("api_password")
+    if api_password_param == API_PASSWORD:
+        return True
+        
+    # Check header
+    if request.headers.get("x-api-password") == API_PASSWORD:
+        return True
+        
+    return False
+
 # Aggiungi path corrente per import moduli
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -88,6 +106,18 @@ try:
     logger.info("✅ Modulo SportsonlineExtractor caricato.")
 except ImportError:
     logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
+
+try:
+    from extractors.mixdrop import MixdropExtractor
+    logger.info("✅ Modulo MixdropExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo MixdropExtractor non trovato.")
+
+try:
+    from extractors.voe import VoeExtractor
+    logger.info("✅ Modulo VoeExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo VoeExtractor non trovato.")
 
 # --- Classi Unite ---
 class ExtractorError(Exception):
@@ -449,6 +479,16 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = SportsonlineExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
+            elif "mixdrop" in url:
+                key = "mixdrop"
+                if key not in self.extractors:
+                    self.extractors[key] = MixdropExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
+            elif "voe.sx" in url or "voe.to" in url:
+                key = "voe"
+                if key not in self.extractors:
+                    self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
             else:
                 # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
                 # Questo permette di gestire estensioni sconosciute o URL senza estensione.
@@ -461,12 +501,15 @@ class HLSProxy:
 
     async def handle_proxy_request(self, request):
         """Gestisce le richieste proxy principali"""
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
         extractor = None
         try:
-            target_url = request.query.get('url')
+            target_url = request.query.get('url') or request.query.get('d')
             force_refresh = request.query.get('force', 'false').lower() == 'true'
             if not target_url:
-                return web.Response(text="Parametro 'url' mancante", status=400)
+                return web.Response(text="Parametro 'url' o 'd' mancante", status=400)
             
             try:
                 target_url = urllib.parse.unquote(target_url)
@@ -1293,6 +1336,8 @@ class HLSProxy:
                 "dlhd_extractor": DLHDExtractor is not None,
                 "vixsrc_extractor": VixSrcExtractor is not None,
                 "sportsonline_extractor": SportsonlineExtractor is not None,
+                "mixdrop_extractor": MixdropExtractor is not None,
+                "voe_extractor": VoeExtractor is not None,
             },
             "proxy_config": {
                 "global": f"{len(GLOBAL_PROXIES)} proxies caricati",
@@ -1301,6 +1346,8 @@ class HLSProxy:
             },
             "endpoints": {
                 "/proxy/manifest.m3u8": "Proxy principale - ?url=<URL>",
+                "/proxy/hls/manifest.m3u8": "Proxy HLS (compatibilità MFP) - ?d=<URL>",
+                "/proxy/mpd/manifest.m3u8": "Proxy MPD (compatibilità MFP) - ?d=<URL>",
                 "/key": "Proxy chiavi AES-128 - ?key_url=<URL>",  # ✅ NUOVO
                 "/playlist": "Playlist builder - ?url=<definizioni>",
                 "/builder": "Interfaccia web per playlist builder",
@@ -1395,6 +1442,8 @@ def create_app():
     app.router.add_get('/api/info', proxy.handle_api_info)
     app.router.add_get('/key', proxy.handle_key_request)
     app.router.add_get('/proxy/manifest.m3u8', proxy.handle_proxy_request)
+    app.router.add_get('/proxy/hls/manifest.m3u8', proxy.handle_proxy_request)
+    app.router.add_get('/proxy/mpd/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/playlist', proxy.handle_playlist_request)
     app.router.add_get('/segment/{segment}', proxy.handle_ts_segment)
     app.router.add_get('/decrypt/segment.mp4', proxy.handle_decrypt_segment) # ✅ NUOVO ROUTE
