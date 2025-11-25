@@ -232,7 +232,7 @@ class MPDToHLSConverter:
                     
                     # Costruisci URL Media Playlist Audio
                     encoded_url = urllib.parse.quote(original_url, safe='')
-                    media_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}&format=hls&rep_id={rep_id}{params}"
+                    media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}&format=hls&rep_id={rep_id}{params}"
                     
                     # Usa GROUP-ID 'audio' e NAME basato su ID o lingua
                     lang = adaptation_set.get('lang', 'und')
@@ -256,7 +256,7 @@ class MPDToHLSConverter:
                     codecs = representation.get('codecs')
                     
                     encoded_url = urllib.parse.quote(original_url, safe='')
-                    media_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}&format=hls&rep_id={rep_id}{params}"
+                    media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}&format=hls&rep_id={rep_id}{params}"
                     
                     inf = f'#EXT-X-STREAM-INF:BANDWIDTH={bandwidth}'
                     if width and height:
@@ -862,8 +862,9 @@ class HLSProxy:
                         original_channel_url = request.query.get('url', '')
                         # Proxy base constructed
                         
+                        api_password = request.query.get('api_password')
                         rewritten_manifest = await self._rewrite_manifest_urls(
-                            manifest_content, stream_url, proxy_base, headers, original_channel_url
+                            manifest_content, stream_url, proxy_base, headers, original_channel_url, api_password
                         )
                         
                         return web.Response(
@@ -888,6 +889,14 @@ class HLSProxy:
                         
                         # Recupera parametri
                         clearkey_param = request.query.get('clearkey')
+                        
+                        # ✅ FIX: Supporto per key_id e key separati (stile MediaFlowProxy)
+                        if not clearkey_param:
+                            key_id = request.query.get('key_id')
+                            key = request.query.get('key')
+                            if key_id and key:
+                                clearkey_param = f"{key_id}:{key}"
+
                         req_format = request.query.get('format')
                         rep_id = request.query.get('rep_id')
                         
@@ -898,6 +907,12 @@ class HLSProxy:
                             
                             # Costruiamo i parametri da passare ai sottolink
                             params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+                            
+                            # ✅ FIX: Propagate api_password
+                            api_password = request.query.get('api_password')
+                            if api_password:
+                                params += f"&api_password={api_password}"
+
                             if clearkey_param:
                                 params += f"&clearkey={clearkey_param}"
                             
@@ -931,7 +946,8 @@ class HLSProxy:
                                 )
 
                         # --- MPD REWRITING (DASH NATIVO) ---
-                        rewritten_manifest = self._rewrite_mpd_manifest(manifest_content, stream_url, proxy_base, headers, clearkey_param)
+                        api_password = request.query.get('api_password')
+                        rewritten_manifest = self._rewrite_mpd_manifest(manifest_content, stream_url, proxy_base, headers, clearkey_param, api_password)
                         
                         return web.Response(
                             text=rewritten_manifest,
@@ -971,7 +987,7 @@ class HLSProxy:
             logger.error(f"Errore nel proxy dello stream: {str(e)}")
             return web.Response(text=f"Errore stream: {str(e)}", status=500)
 
-    def _rewrite_mpd_manifest(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, clearkey_param: str = None) -> str:
+    def _rewrite_mpd_manifest(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, clearkey_param: str = None, api_password: str = None) -> str:
         """Riscrive i manifest MPD (DASH) per passare attraverso il proxy."""
         try:
             # Aggiungiamo il namespace di default se non presente, per ET
@@ -988,11 +1004,14 @@ class HLSProxy:
 
             # Includiamo solo gli header rilevanti per evitare URL troppo lunghi
             header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+            
+            if api_password:
+                header_params += f"&api_password={api_password}"
 
             def create_proxy_url(relative_url):
                 absolute_url = urljoin(base_url, relative_url)
                 encoded_url = urllib.parse.quote(absolute_url, safe='')
-                return f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                return f"{proxy_base}/proxy/mpd/manifest.m3u8?d={encoded_url}{header_params}"
 
             # --- GESTIONE CLEARKEY STATICA ---
             if clearkey_param:
@@ -1009,6 +1028,8 @@ class HLSProxy:
                     # Aggiungi l'elemento Laurl (License Acquisition URL)
                     # Puntiamo al nostro endpoint /license con i parametri necessari
                     license_url = f"{proxy_base}/license?clearkey={clearkey_param}"
+                    if api_password:
+                        license_url += f"&api_password={api_password}"
                     
                     # 1. Laurl standard (namespace MPD) - alcuni player lo usano
                     laurl_element = ET.SubElement(cp_element, '{urn:mpeg:dash:schema:mpd:2011}Laurl')
@@ -1090,7 +1111,7 @@ class HLSProxy:
             logger.error(f"❌ Errore durante la riscrittura del manifest MPD: {e}")
             return manifest_content # Restituisce il contenuto originale in caso di errore
 
-    async def _rewrite_manifest_urls(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '') -> str:
+    async def _rewrite_manifest_urls(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '', api_password: str = None) -> str:
         """✅ AGGIORNATA: Riscrive gli URL nei manifest HLS per passare attraverso il proxy (incluse chiavi AES)"""
         lines = manifest_content.split('\n')
         rewritten_lines = []
@@ -1138,6 +1159,9 @@ class HLSProxy:
 
         # Logica standard per tutti gli altri stream
         header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+        
+        if api_password:
+            header_params += f"&api_password={api_password}"
 
         for line in lines:
             line = line.strip()
@@ -1170,6 +1194,9 @@ class HLSProxy:
                     )
                     proxy_key_url += key_header_params
                     
+                    if api_password:
+                        proxy_key_url += f"&api_password={api_password}"
+                    
                     # Sostituisci l'URI nel tag EXT-X-KEY
                     new_line = line[:uri_start] + proxy_key_url + line[uri_end:]
                     rewritten_lines.append(new_line)
@@ -1190,7 +1217,7 @@ class HLSProxy:
                     encoded_media_url = urllib.parse.quote(absolute_media_url, safe='')
                     
                     # I sottotitoli sono manifest, quindi usano l'endpoint del proxy principale
-                    proxy_media_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_media_url}{header_params}"
+                    proxy_media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_media_url}{header_params}"
                     
                     # Sostituisci l'URI nel tag
                     new_line = line[:uri_start] + proxy_media_url + line[uri_end:]
@@ -1208,12 +1235,12 @@ class HLSProxy:
                 
                 # I sub-manifest o URL che potrebbero contenere altri manifest vengono inviati all'endpoint proxy.
                 if any(ext in line for ext in ['.m3u8', '.css']):
-                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
                 # Tutti gli altri (segmenti .ts, .html, etc.) vengono inviati allo stesso endpoint,
                 # ma la logica in _proxy_stream li tratterà come stream diretti e non come manifest da processare.
                 else:
-                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
                     rewritten_lines.append(proxy_url)
 
             else:
@@ -1345,9 +1372,9 @@ class HLSProxy:
                 "dlhd": f"{len(DLHD_PROXIES)} proxies caricati",
             },
             "endpoints": {
-                "/proxy/manifest.m3u8": "Proxy principale - ?url=<URL>",
                 "/proxy/hls/manifest.m3u8": "Proxy HLS (compatibilità MFP) - ?d=<URL>",
                 "/proxy/mpd/manifest.m3u8": "Proxy MPD (compatibilità MFP) - ?d=<URL>",
+                "/proxy/manifest.m3u8": "Proxy Legacy - ?url=<URL>",
                 "/key": "Proxy chiavi AES-128 - ?key_url=<URL>",  # ✅ NUOVO
                 "/playlist": "Playlist builder - ?url=<definizioni>",
                 "/builder": "Interfaccia web per playlist builder",
@@ -1357,10 +1384,11 @@ class HLSProxy:
                 "/api/info": "Endpoint JSON con informazioni sul server"
             },
             "usage_examples": {
-                "proxy": "/proxy/manifest.m3u8?url=https://example.com/stream.m3u8",
+                "proxy_hls": "/proxy/hls/manifest.m3u8?d=https://example.com/stream.m3u8",
+                "proxy_mpd": "/proxy/mpd/manifest.m3u8?d=https://example.com/stream.mpd",
                 "aes_key": "/key?key_url=https://server.com/key.bin",  # ✅ NUOVO
                 "playlist": "/playlist?url=http://example.com/playlist1.m3u8;http://example.com/playlist2.m3u8",
-                "custom_headers": "/proxy/manifest.m3u8?url=<URL>&h_Authorization=Bearer%20token"
+                "custom_headers": "/proxy/hls/manifest.m3u8?d=<URL>&h_Authorization=Bearer%20token"
             }
         }
         return web.json_response(info)
