@@ -831,6 +831,11 @@ class HLSProxy:
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
                     header_name = param_name[2:].replace('_', '-')
+                    # ✅ FIX: Rimuovi header Range per le richieste di chiavi.
+                    # Le chiavi sono file piccoli e non supportano/richiedono range request,
+                    # che causano risposte 206 Partial Content interpretate come errore.
+                    if header_name.lower() == 'range':
+                        continue
                     headers[header_name] = param_value
 
             logger.info(f"🔑 Fetching AES key from: {key_url}")
@@ -856,7 +861,7 @@ class HLSProxy:
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
-                    if resp.status == 200:
+                    if resp.status == 200 or resp.status == 206:
                         key_data = await resp.read()
                         logger.info(f"✅ AES key fetched successfully: {len(key_data)} bytes")
                         
