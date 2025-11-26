@@ -570,6 +570,14 @@ class HLSProxy:
                 for param_name, param_value in request.query.items():
                     if param_name.startswith('h_'):
                         header_name = param_name[2:]
+                        
+                        # ✅ FIX: Rimuovi eventuali header duplicati (case-insensitive) presenti in stream_headers
+                        # Questo assicura che l'header passato via query param (es. h_Referer) abbia la priorità
+                        # e non vada in conflitto con quelli generati dagli estrattori (es. referer minuscolo).
+                        for k in list(stream_headers.keys()):
+                            if k.lower() == header_name.lower():
+                                del stream_headers[k]
+                        
                         stream_headers[header_name] = param_value
                 
                 # Stream URL resolved
