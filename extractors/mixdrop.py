@@ -38,21 +38,49 @@ class MixdropExtractor:
 
     async def extract(self, url: str, **kwargs) -> dict:
         """Extract Mixdrop URL."""
+        # Normalize URL to .ps domain and remove trailing segments
         if "club" in url:
             url = url.replace("club", "ps").split("/2")[0]
+        elif "ag" in url:
+            url = url.replace("ag", "ps").split("/2")[0]
+        elif any(domain in url for domain in ["mdy48tn97.com", "mixdrop.to", "mixdrop.co"]):
+            # Handle alternative domains
+            for domain in ["mdy48tn97.com", "mixdrop.to", "mixdrop.co"]:
+                if domain in url:
+                    url = url.replace(domain, "mixdrop.ps").split("/2")[0]
+                    break
 
         headers = {"accept-language": "en-US,en;q=0.5", "referer": url}
-        patterns = [r'MDCore.wurl ?= ?"(.*?)"']
+        
+        # Multiple patterns to try in order of likelihood
+        patterns = [
+            r'MDCore.wurl ?= ?\"(.*?)\"',  # Primary pattern
+            r'wurl ?= ?\"(.*?)\"',          # Simplified pattern
+            r'src: ?\"(.*?)\"',             # Alternative pattern
+            r'file: ?\"(.*?)\"',            # Another alternative
+            r'https?://[^\"\']+\.mp4[^\"\']*'  # Direct MP4 URL pattern
+        ]
 
         session = await self._get_session()
-        final_url = await eval_solver(session, url, headers, patterns)
-
-        self.base_headers["referer"] = url
-        return {
-            "destination_url": final_url,
-            "request_headers": self.base_headers,
-            "mediaflow_endpoint": self.mediaflow_endpoint,
-        }
+        
+        try:
+            final_url = await eval_solver(session, url, headers, patterns)
+            
+            # Validate extracted URL
+            if not final_url or len(final_url) < 10:
+                raise ExtractorError(f"Extracted URL appears invalid: {final_url}")
+            
+            logger.info(f"Successfully extracted Mixdrop URL: {final_url[:50]}...")
+            
+            self.base_headers["referer"] = url
+            return {
+                "destination_url": final_url,
+                "request_headers": self.base_headers,
+                "mediaflow_endpoint": self.mediaflow_endpoint,
+            }
+        except Exception as e:
+            logger.error(f"Failed to extract Mixdrop URL from {url}: {str(e)}")
+            raise ExtractorError(f"Mixdrop extraction failed: {str(e)}") from e
 
     async def close(self):
         if self.session and not self.session.closed:

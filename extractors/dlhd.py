@@ -414,7 +414,12 @@ class DLHDExtractor:
                 return await get_stream_data(baseurl, url, channel_id)
             
         except Exception as e:
-            logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
+            # Per errori 403, non loggare il traceback perché sono errori attesi (servizio temporaneamente non disponibile)
+            error_message = str(e)
+            if "403" in error_message or "Forbidden" in error_message:
+                logger.error(f"Estrazione DLHD completamente fallita per URL {url}")
+            else:
+                logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
             raise ExtractorError(f"Estrazione DLHD completamente fallita: {str(e)}")
 
     async def _extract_lovecdn_stream(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
