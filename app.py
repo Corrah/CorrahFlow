@@ -519,6 +519,7 @@ class HLSProxy:
     async def handle_proxy_request(self, request):
         """Gestisce le richieste proxy principali"""
         if not check_password(request):
+            logger.warning(f"⛔ Accesso negato: Password API non valida o mancante. IP: {request.remote}")
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         extractor = None
@@ -1437,9 +1438,12 @@ class HLSProxy:
             host = request.headers.get('X-Forwarded-Host', request.host)
             base_url = f"{scheme}://{host}"
             
+            # ✅ FIX: Passa api_password al builder se presente
+            api_password = request.query.get('api_password')
+            
             async def generate_response():
                 async for line in self.playlist_builder.async_generate_combined_playlist(
-                    playlist_definitions, base_url
+                    playlist_definitions, base_url, api_password=api_password
                 ):
                     yield line.encode('utf-8')
             
