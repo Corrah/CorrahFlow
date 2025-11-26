@@ -175,10 +175,12 @@ class GenericHLSExtractor:
         headers = self.base_headers.copy()
         headers.update({"referer": origin, "origin": origin})
 
-        # ✅ FIX: Sovrascrivi gli header di base con quelli forniti nella richiesta (es. da h_ params)
-        # Questo permette di mantenere Referer, User-Agent e altri header specifici passati dal proxy.
+        # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
+        # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
+        # Gli header necessari (Referer, User-Agent) vengono gestiti tramite i parametri h_.
         for h, v in self.request_headers.items():
-            headers[h] = v
+            if h.lower() in ["authorization", "x-api-key", "x-auth-token"]:
+                headers[h] = v
 
         return {
             "destination_url": url, 
