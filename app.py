@@ -12,14 +12,14 @@ import binascii
 import json
 import aiohttp
 from aiohttp import web
-from aiohttp import ClientSession, ClientTimeout, TCPConnector
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
 from aiohttp_proxy import ProxyConnector
 from dotenv import load_dotenv
 import zipfile
 import io
 import platform
 import stat
-from drm_decrypter import decrypt_segment
+from utils.drm_decrypter import decrypt_segment
 
 load_dotenv() # Carica le variabili dal file .env
 
@@ -1150,8 +1150,18 @@ class HLSProxy:
                     await response.write_eof()
                     return response
                     
+        except (ClientPayloadError, ConnectionResetError, OSError) as e:
+            # Errori tipici di disconnessione del client
+            logger.info(f"ℹ️ Client disconnesso dallo stream: {stream_url} ({str(e)})")
+            return web.Response(text="Client disconnected", status=499)
+            
+        except (ServerDisconnectedError, ClientConnectionError, asyncio.TimeoutError) as e:
+            # Errori di connessione upstream
+            logger.warning(f"⚠️ Connessione persa con la sorgente: {stream_url} ({str(e)})")
+            return web.Response(text=f"Upstream connection lost: {str(e)}", status=502)
+
         except Exception as e:
-            logger.error(f"Errore nel proxy dello stream: {str(e)}")
+            logger.error(f"❌ Errore generico nel proxy dello stream: {str(e)}")
             return web.Response(text=f"Errore stream: {str(e)}", status=500)
 
     def _rewrite_mpd_manifest(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, clearkey_param: str = None, api_password: str = None) -> str:
