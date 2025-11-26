@@ -79,7 +79,12 @@ class MixdropExtractor:
                 "mediaflow_endpoint": self.mediaflow_endpoint,
             }
         except Exception as e:
-            logger.error(f"Failed to extract Mixdrop URL from {url}: {str(e)}")
+            error_message = str(e)
+            # Per errori di video non trovato, non loggare il traceback perché sono errori attesi
+            if "not found" in error_message.lower() or "unavailable" in error_message.lower():
+                logger.warning(f"Mixdrop video not available at {url}: {error_message}")
+            else:
+                logger.error(f"Failed to extract Mixdrop URL from {url}: {error_message}")
             raise ExtractorError(f"Mixdrop extraction failed: {str(e)}") from e
 
     async def close(self):
