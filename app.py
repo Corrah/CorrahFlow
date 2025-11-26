@@ -699,9 +699,20 @@ class HLSProxy:
             return web.json_response(response_data)
 
         except Exception as e:
-            logger.error(f"❌ Error in extractor request: {e}")
-            import traceback
-            traceback.print_exc()
+            error_message = str(e).lower()
+            # Per errori attesi (video non trovato, servizio non disponibile), non stampare il traceback
+            is_expected_error = any(x in error_message for x in [
+                'not found', 'unavailable', '403', 'forbidden', 
+                '502', 'bad gateway', 'timeout', 'temporarily unavailable'
+            ])
+            
+            if is_expected_error:
+                logger.warning(f"⚠️ Extractor request failed (expected error): {e}")
+            else:
+                logger.error(f"❌ Error in extractor request: {e}")
+                import traceback
+                traceback.print_exc()
+            
             return web.Response(text=str(e), status=500)
 
     async def handle_license_request(self, request):
