@@ -175,9 +175,10 @@ class GenericHLSExtractor:
         headers = self.base_headers.copy()
         headers.update({"referer": origin, "origin": origin})
 
+        # ✅ FIX: Sovrascrivi gli header di base con quelli forniti nella richiesta (es. da h_ params)
+        # Questo permette di mantenere Referer, User-Agent e altri header specifici passati dal proxy.
         for h, v in self.request_headers.items():
-            if h.lower() in ["authorization", "x-api-key", "x-auth-token"]:
-                headers[h] = v
+            headers[h] = v
 
         return {
             "destination_url": url, 
@@ -1049,7 +1050,7 @@ class HLSProxy:
                         if req_format == 'hls' or (request.path.endswith('.m3u8') and req_format != 'mpd'):
                             
                             # Costruiamo i parametri da passare ai sottolink
-                            params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+                            params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
                             
                             # ✅ FIX: Propagate api_password
                             api_password = request.query.get('api_password')
@@ -1150,8 +1151,8 @@ class HLSProxy:
             ET.register_namespace('cenc', ns['cenc'])
             ET.register_namespace('dashif', ns['dashif'])
 
-            # Includiamo solo gli header rilevanti per evitare URL troppo lunghi
-            header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']])
+            # Includiamo tutti gli header rilevanti passati dall'estrattore
+            header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
             
             if api_password:
                 header_params += f"&api_password={api_password}"
@@ -1311,14 +1312,9 @@ class HLSProxy:
         # Altrimenti, se non c'è, potremmo voler usare l'original_channel_url o il base_url,
         # ma per VOE è CRUCIALE che il Referer sia quello del sito embed (walterprettytheir.com), non del CDN.
         
-        # Filtriamo gli header da passare come parametri
-        params_dict = {}
-        for key, value in stream_headers.items():
-            if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']:
-                params_dict[key] = value
-        
-        # Costruiamo la stringa dei parametri
-        header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in params_dict.items()])
+        # Passiamo tutti gli header presenti in stream_headers come parametri h_
+        # Questo assicura che header critici come X-Channel-Key (DLHD) o Referer specifici (Vavoo) non vengano persi.
+        header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
         
         if api_password:
             header_params += f"&api_password={api_password}"
@@ -1350,7 +1346,7 @@ class HLSProxy:
                     # per garantire l'autenticazione corretta.
                     key_header_params = "".join(
                         [f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" 
-                         for key, value in stream_headers.items() if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']]
+                         for key, value in stream_headers.items()]
                     )
                     proxy_key_url += key_header_params
                     
