@@ -154,7 +154,8 @@ class GenericHLSExtractor:
                 connector = TCPConnector(
                     limit=20, limit_per_host=10, 
                     keepalive_timeout=60, enable_cleanup_closed=True, 
-                    force_close=False, use_dns_cache=True
+                    force_close=False, use_dns_cache=True,
+                    ssl=False
                 )
 
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
@@ -179,7 +180,8 @@ class GenericHLSExtractor:
         # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
         # Gli header necessari (Referer, User-Agent) vengono gestiti tramite i parametri h_.
         for h, v in self.request_headers.items():
-            if h.lower() in ["authorization", "x-api-key", "x-auth-token"]:
+            # ✅ AGGIORNATO: Includiamo anche Referer e User-Agent espliciti dal client
+            if h.lower() in ["authorization", "x-api-key", "x-auth-token", "referer", "user-agent"]:
                 headers[h] = v
 
         return {
@@ -535,13 +537,20 @@ class HLSProxy:
                 
             # Log removed for cleaner output
             
+            # DEBUG LOGGING
+            print(f"🔍 [DEBUG] Processing URL: {target_url}")
+            print(f"   Headers: {dict(request.headers)}")
+            
             extractor = await self.get_extractor(target_url, dict(request.headers))
+            print(f"   Extractor: {type(extractor).__name__}")
             
             try:
                 # Passa il flag force_refresh all'estrattore
                 result = await extractor.extract(target_url, force_refresh=force_refresh)
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
+                print(f"   Resolved Stream URL: {stream_url}")
+                print(f"   Stream Headers: {stream_headers}")
                 
                 # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
                 if not redirect_stream:
@@ -993,8 +1002,9 @@ class HLSProxy:
 
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
-                async with session.get(stream_url, headers=headers, **connector_kwargs) as resp:
+                async with session.get(stream_url, headers=headers, **connector_kwargs, ssl=False) as resp:
                     content_type = resp.headers.get('content-type', '')
+                    print(f"   Upstream Response: {resp.status} [{content_type}]")
                     
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
