@@ -27,12 +27,12 @@ load_dotenv() # Carica le variabili dal file .env
 # ✅ CORREZIONE: Imposta un formato standard e assicurati che il logger 'aiohttp.access'
 # non venga silenziato, permettendo la visualizzazione dei log di accesso.
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 
 # Silenzia i log di accesso di aiohttp a meno che non siano errori
-logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
+# logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -1314,7 +1314,7 @@ class HLSProxy:
         # Filtriamo gli header da passare come parametri
         params_dict = {}
         for key, value in stream_headers.items():
-            if key.lower() in ['user-agent', 'referer', 'origin', 'authorization', 'cookie']:
+            if key.lower() in ['user-agent', 'referer', 'origin', 'authorization']:
                 params_dict[key] = value
         
         # Costruiamo la stringa dei parametri
