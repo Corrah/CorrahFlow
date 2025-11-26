@@ -1719,6 +1719,33 @@ class HLSProxy:
             logger.error(f"❌ Error generating URLs: {e}")
             return web.Response(text=str(e), status=500)
 
+    async def handle_proxy_ip(self, request):
+        """Restituisce l'indirizzo IP pubblico del server (o del proxy se configurato)."""
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
+        try:
+            # Usa un proxy globale se configurato, altrimenti connessione diretta
+            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
+            connector_kwargs = {}
+            if proxy:
+                connector_kwargs['proxy'] = proxy
+                logger.info(f"🌍 Checking IP via proxy: {proxy}")
+            
+            session = await self._get_session()
+            # Usa un servizio esterno per determinare l'IP pubblico
+            async with session.get('https://api.ipify.org?format=json', **connector_kwargs) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return web.json_response(data)
+                else:
+                    logger.error(f"❌ Failed to fetch IP: {resp.status}")
+                    return web.Response(text="Failed to fetch IP", status=502)
+                    
+        except Exception as e:
+            logger.error(f"❌ Error fetching IP: {e}")
+            return web.Response(text=str(e), status=500)
+
     async def cleanup(self):
         """Pulizia delle risorse"""
         try:
@@ -1775,6 +1802,9 @@ def create_app():
     
     # ✅ NUOVO: Endpoint per generazione URL (compatibilità MFP)
     app.router.add_post('/generate_urls', proxy.handle_generate_urls)
+
+    # ✅ NUOVO: Endpoint per ottenere l'IP pubblico
+    app.router.add_get('/proxy/ip', proxy.handle_proxy_ip)
     
     # Gestore OPTIONS generico per CORS
     app.router.add_route('OPTIONS', '/{tail:.*}', proxy.handle_options)
