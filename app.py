@@ -604,22 +604,23 @@ class HLSProxy:
                 return await self._proxy_stream(request, stream_url, stream_headers)
             
         except Exception as e:
-            # ✅ AGGIORNATO: Se un estrattore specifico (DLHD, Vavoo) fallisce, riavvia il server per forzare un aggiornamento.
-            # Questo è utile se il sito ha cambiato qualcosa e l'estrattore è obsoleto.
-            restarting = False
+            # ✅ MIGLIORATO: Distingui tra errori temporanei (sito offline) ed errori critici
+            error_msg = str(e).lower()
+            is_temporary_error = any(x in error_msg for x in ['403', 'forbidden', '502', 'bad gateway', 'timeout', 'connection', 'temporarily unavailable'])
+            
             extractor_name = "sconosciuto"
             if DLHDExtractor and isinstance(extractor, DLHDExtractor):
-                restarting = True
                 extractor_name = "DLHDExtractor"
             elif VavooExtractor and isinstance(extractor, VavooExtractor):
-                restarting = True
                 extractor_name = "VavooExtractor"
 
-            if restarting:
-                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio disabilitato per stabilità.")
-                # await asyncio.sleep(1)  # Attesa per il flush dei log
-                # os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
-
+            # Se è un errore temporaneo (sito offline), logga solo un WARNING senza traceback
+            if is_temporary_error:
+                logger.warning(f"⚠️ {extractor_name}: Servizio temporaneamente non disponibile - {str(e)}")
+                return web.Response(text=f"Servizio temporaneamente non disponibile: {str(e)}", status=503)
+            
+            # Per errori veri (non temporanei), logga come CRITICAL con traceback completo
+            logger.critical(f"❌ Errore critico con {extractor_name}: {e}")
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
 
