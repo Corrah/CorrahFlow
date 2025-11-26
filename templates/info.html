@@ -763,6 +763,115 @@
                         </li>
                     </ul>
                 </div>
+
+                <!-- MediaFlow Compatible HLS -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET</span>
+                        <code class="endpoint-path">/proxy/hls/manifest.m3u8?d=&lt;URL&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        Endpoint compatibile con MediaFlow-Proxy per flussi HLS.
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Parametro <code>d</code> per l'URL di destinazione</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Compatibilità drop-in per client MediaFlow</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- DASH / MPD Proxy -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET</span>
+                        <code class="endpoint-path">/proxy/mpd/manifest.m3u8?d=&lt;URL_MPD&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        Proxy per manifest DASH (.mpd) con conversione on-the-fly.
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span><strong>Conversione HLS:</strong> Trasforma automaticamente MPD in M3U8 per player non compatibili</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span><strong>Nativo:</strong> Usa <code>format=mpd</code> per mantenere il formato originale</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Supporto ClearKey DRM integrato</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Extractor API -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET</span>
+                        <code class="endpoint-path">/extractor/video?url=&lt;URL&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        API di estrazione avanzata (MediaFlow compatible).
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span><code>redirect_stream=true</code> (default): Redirect 302 immediato allo stream</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span><code>redirect_stream=false</code>: Restituisce JSON con metadati e headers</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- AES Key Proxy -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET</span>
+                        <code class="endpoint-path">/key?key_url=&lt;URL&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        Proxy sicuro per chiavi di decrittazione AES-128.
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Gestione headers di autenticazione per le chiavi</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Supporto chiavi statiche e dinamiche</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- DRM License Proxy -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET/POST</span>
+                        <code class="endpoint-path">/license?url=&lt;URL&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        Proxy per richieste di licenza DRM (ClearKey, Widevine).
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Supporto ClearKey statico: <code>?clearkey=KID:KEY</code></span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Proxy trasparente per server di licenza remoti</span>
+                        </li>
+                    </ul>
+                </div>
             </section>
 
             <!-- Caratteristiche Avanzate -->
