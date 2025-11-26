@@ -942,7 +942,7 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                # logger.info(f"Utilizzo del proxy {proxy} per il segmento .ts.")
+                logger.debug(f"📡 [Proxy Segment] Utilizzo del proxy {proxy} per il segmento .ts")
 
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
@@ -992,7 +992,7 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                # logger.info(f"Utilizzo del proxy {proxy} per lo stream.")
+                logger.info(f"📡 [Proxy Stream] Utilizzo del proxy {proxy} per la richiesta verso: {stream_url}")
 
             # ✅ FIX: Normalizza gli header critici (User-Agent, Referer) in Title-Case
             # Alcuni server (es. Vavoo) potrebbero rifiutare header tutti minuscoli
@@ -1653,6 +1653,19 @@ class HLSProxy:
                     return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
             urls_to_process = data.get('urls', [])
+            
+            # --- LOGGING RICHIESTO ---
+            client_ip = request.remote
+            exit_strategy = "IP del Server (Diretto)"
+            if GLOBAL_PROXIES:
+                exit_strategy = f"Proxy Globale Random (Pool di {len(GLOBAL_PROXIES)} proxy)"
+            
+            logger.info(f"🔄 [Generate URLs] Richiesta da Client IP: {client_ip}")
+            logger.info(f"    -> Strategia di uscita prevista per lo stream: {exit_strategy}")
+            if urls_to_process:
+                logger.info(f"    -> Generazione di {len(urls_to_process)} URL proxy per destinazione: {urls_to_process[0].get('destination_url', 'N/A')}")
+            # -------------------------
+
             generated_urls = []
             
             # Determina base URL del proxy
