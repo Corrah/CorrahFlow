@@ -14,7 +14,7 @@ class PlaylistBuilder:
     def __init__(self):
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     
-    def rewrite_m3u_links_streaming(self, m3u_lines_iterator: Iterator[str], base_url: str) -> Iterator[str]:
+    def rewrite_m3u_links_streaming(self, m3u_lines_iterator: Iterator[str], base_url: str, api_password: str = None) -> Iterator[str]:
         current_ext_headers: Dict[str, str] = {}
         current_clearkey = None  # Store clearkey from KODIPROP
         
@@ -108,6 +108,10 @@ class PlaylistBuilder:
                     processed_url_content += header_params_str
                     current_ext_headers = {}
                 
+                # ✅ FIX: Aggiungi api_password se presente
+                if api_password:
+                    processed_url_content += f"&api_password={api_password}"
+                
                 yield processed_url_content + '\n'
             else:
                 yield line_with_newline
@@ -165,7 +169,7 @@ class PlaylistBuilder:
                     return parts[1].strip()
         return ""
 
-    async def async_generate_combined_playlist(self, playlist_definitions: List[str], base_url: str):
+    async def async_generate_combined_playlist(self, playlist_definitions: List[str], base_url: str, api_password: str = None):
         playlist_configs = []
         for definition in playlist_definitions:
             # Supporto vecchio formato con & (legacy) e nuovo formato con |
@@ -236,7 +240,7 @@ class PlaylistBuilder:
                         if item_data['noproxy']:
                             iterator = iter(item_lines)
                         else:
-                            iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url)
+                            iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url, api_password=api_password)
                         
                         for line in iterator:
                             if not line.endswith('\n'): line += '\n'
@@ -248,7 +252,7 @@ class PlaylistBuilder:
                 if options.get('noproxy'):
                     iterator = iter(playlist_lines)
                 else:
-                    iterator = self.rewrite_m3u_links_streaming(iter(playlist_lines), base_url)
+                    iterator = self.rewrite_m3u_links_streaming(iter(playlist_lines), base_url, api_password=api_password)
                 
                 for line in iterator:
                     # Salta headers globali se già gestiti
@@ -266,7 +270,7 @@ class PlaylistBuilder:
                 if item_data['noproxy']:
                     iterator = iter(item_lines)
                 else:
-                    iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url)
+                    iterator = self.rewrite_m3u_links_streaming(iter(item_lines), base_url, api_password=api_password)
                 
                 for line in iterator:
                     if not line.endswith('\n'): line += '\n'
