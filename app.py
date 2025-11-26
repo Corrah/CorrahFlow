@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import base64
 import binascii
 import json
+import ssl
 import aiohttp
 from aiohttp import web
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
@@ -151,11 +152,16 @@ class GenericHLSExtractor:
                 logging.info(f"Utilizzo del proxy {proxy} per la sessione generica.")
                 connector = ProxyConnector.from_url(proxy)
             else:
+                # Create SSL context that doesn't verify certificates
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                
                 connector = TCPConnector(
                     limit=20, limit_per_host=10, 
                     keepalive_timeout=60, enable_cleanup_closed=True, 
                     force_close=False, use_dns_cache=True,
-                    ssl=False
+                    ssl=ssl_context
                 )
 
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
