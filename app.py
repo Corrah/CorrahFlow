@@ -1728,20 +1728,24 @@ class HLSProxy:
         try:
             # Usa un proxy globale se configurato, altrimenti connessione diretta
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
-            connector_kwargs = {}
-            if proxy:
-                connector_kwargs['proxy'] = proxy
-                logger.info(f"🌍 Checking IP via proxy: {proxy}")
             
-            session = await self._get_session()
-            # Usa un servizio esterno per determinare l'IP pubblico
-            async with session.get('https://api.ipify.org?format=json', **connector_kwargs) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return web.json_response(data)
-                else:
-                    logger.error(f"❌ Failed to fetch IP: {resp.status}")
-                    return web.Response(text="Failed to fetch IP", status=502)
+            # Crea una sessione dedicata con il proxy configurato
+            if proxy:
+                logger.info(f"🌍 Checking IP via proxy: {proxy}")
+                connector = ProxyConnector.from_url(proxy)
+            else:
+                connector = TCPConnector()
+            
+            timeout = ClientTimeout(total=10)
+            async with ClientSession(timeout=timeout, connector=connector) as session:
+                # Usa un servizio esterno per determinare l'IP pubblico
+                async with session.get('https://api.ipify.org?format=json') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return web.json_response(data)
+                    else:
+                        logger.error(f"❌ Failed to fetch IP: {resp.status}")
+                        return web.Response(text="Failed to fetch IP", status=502)
                     
         except Exception as e:
             logger.error(f"❌ Error fetching IP: {e}")
