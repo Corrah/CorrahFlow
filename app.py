@@ -1632,7 +1632,7 @@ class HLSProxy:
                 if init_url in self.init_cache:
                     init_content = self.init_cache[init_url]
                 else:
-                    async with session.get(init_url, headers=headers) as resp:
+                    async with session.get(init_url, headers=headers, ssl=False) as resp:
                         if resp.status == 200:
                             init_content = await resp.read()
                             self.init_cache[init_url] = init_content
@@ -1641,7 +1641,7 @@ class HLSProxy:
                             return web.Response(status=502)
 
             # --- 2. Scarica Media Segment ---
-            async with session.get(url, headers=headers) as resp:
+            async with session.get(url, headers=headers, ssl=False) as resp:
                 if resp.status != 200:
                     logger.error(f"❌ Failed to fetch segment: {resp.status}")
                     return web.Response(status=502)
