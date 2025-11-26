@@ -1636,6 +1636,66 @@ class HLSProxy:
             traceback.print_exc()
             return web.Response(status=500, text=f"Decryption failed: {str(e)}")
 
+    async def handle_generate_urls(self, request):
+        """
+        Endpoint compatibile con MediaFlow-Proxy per generare URL proxy.
+        Supporta la richiesta POST da ilCorsaroViola.
+        """
+        try:
+            data = await request.json()
+            
+            # Verifica password se presente nel body (ilCorsaroViola la manda qui)
+            req_password = data.get('api_password')
+            if API_PASSWORD and req_password != API_PASSWORD:
+                 # Fallback: check standard auth methods if body auth fails or is missing
+                 if not check_password(request):
+                    logger.warning("⛔ Unauthorized generate_urls request")
+                    return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
+            urls_to_process = data.get('urls', [])
+            generated_urls = []
+            
+            # Determina base URL del proxy
+            scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+            host = request.headers.get('X-Forwarded-Host', request.host)
+            proxy_base = f"{scheme}://{host}"
+
+            for item in urls_to_process:
+                dest_url = item.get('destination_url')
+                if not dest_url:
+                    continue
+                    
+                endpoint = item.get('endpoint', '/proxy/stream')
+                req_headers = item.get('request_headers', {})
+                
+                # Costruisci query params
+                encoded_url = urllib.parse.quote(dest_url, safe='')
+                params = [f"d={encoded_url}"]
+                
+                # Aggiungi headers come h_ params
+                for key, value in req_headers.items():
+                    params.append(f"h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}")
+                
+                # Aggiungi password se necessaria
+                if API_PASSWORD:
+                    params.append(f"api_password={API_PASSWORD}")
+                
+                # Costruisci URL finale
+                query_string = "&".join(params)
+                
+                # Assicuriamoci che l'endpoint inizi con /
+                if not endpoint.startswith('/'):
+                    endpoint = '/' + endpoint
+                
+                full_url = f"{proxy_base}{endpoint}?{query_string}"
+                generated_urls.append(full_url)
+
+            return web.json_response({"urls": generated_urls})
+
+        except Exception as e:
+            logger.error(f"❌ Error generating URLs: {e}")
+            return web.Response(text=str(e), status=500)
+
     async def cleanup(self):
         """Pulizia delle risorse"""
         try:
@@ -1689,6 +1749,9 @@ def create_app():
     # Route per licenze DRM (GET e POST)
     app.router.add_get('/license', proxy.handle_license_request)
     app.router.add_post('/license', proxy.handle_license_request)
+    
+    # ✅ NUOVO: Endpoint per generazione URL (compatibilità MFP)
+    app.router.add_post('/generate_urls', proxy.handle_generate_urls)
     
     # Gestore OPTIONS generico per CORS
     app.router.add_route('OPTIONS', '/{tail:.*}', proxy.handle_options)
