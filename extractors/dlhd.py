@@ -149,7 +149,8 @@ class DLHDExtractor:
                 return decompressed_body.decode(response.charset or 'utf-8')
             else:
                 # Nessuna compressione o compressione non gestita, prova a decodificare direttamente
-                return raw_body.decode(response.charset or 'utf-8')
+                # ✅ FIX: Usa 'errors=replace' per evitare crash su byte non validi
+                return raw_body.decode(response.charset or 'utf-8', errors='replace')
         except Exception as e:
             logger.error(f"Errore durante la decompressione/decodifica del contenuto da {response.url}: {e}")
             raise ExtractorError(f"Fallimento decompressione per {response.url}: {e}")
@@ -158,7 +159,8 @@ class DLHDExtractor:
         """✅ Richieste con sessione persistente per evitare anti-bot"""
         final_headers = self._get_headers_for_url(url, headers or {})
         # Aggiungiamo zstd agli header accettati per segnalare al server che lo supportiamo
-        final_headers['Accept-Encoding'] = 'gzip, deflate, br, zstd'
+        # Rimosso 'br' perché non gestito in _handle_response_content
+        final_headers['Accept-Encoding'] = 'gzip, deflate, zstd'
         
         for attempt in range(retries):
             try:
