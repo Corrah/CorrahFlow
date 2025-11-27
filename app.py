@@ -19,7 +19,7 @@ import zipfile
 import io
 import platform
 import stat
-from drm_decrypter import decrypt_segment
+from utils.drm_decrypter import decrypt_segment
 
 load_dotenv() # Carica le variabili dal file .env
 
