@@ -149,7 +149,8 @@ class DLHDExtractor:
                 return decompressed_body.decode(response.charset or 'utf-8')
             else:
                 # Nessuna compressione o compressione non gestita, prova a decodificare direttamente
-                return raw_body.decode(response.charset or 'utf-8')
+                # ✅ FIX: Usa 'errors=replace' per evitare crash su byte non validi
+                return raw_body.decode(response.charset or 'utf-8', errors='replace')
         except Exception as e:
             logger.error(f"Errore durante la decompressione/decodifica del contenuto da {response.url}: {e}")
             raise ExtractorError(f"Fallimento decompressione per {response.url}: {e}")
@@ -158,7 +159,8 @@ class DLHDExtractor:
         """✅ Richieste con sessione persistente per evitare anti-bot"""
         final_headers = self._get_headers_for_url(url, headers or {})
         # Aggiungiamo zstd agli header accettati per segnalare al server che lo supportiamo
-        final_headers['Accept-Encoding'] = 'gzip, deflate, br, zstd'
+        # Rimosso 'br' perché non gestito in _handle_response_content
+        final_headers['Accept-Encoding'] = 'gzip, deflate, zstd'
         
         for attempt in range(retries):
             try:
@@ -412,7 +414,12 @@ class DLHDExtractor:
                 return await get_stream_data(baseurl, url, channel_id)
             
         except Exception as e:
-            logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
+            # Per errori 403, non loggare il traceback perché sono errori attesi (servizio temporaneamente non disponibile)
+            error_message = str(e)
+            if "403" in error_message or "Forbidden" in error_message:
+                logger.error(f"Estrazione DLHD completamente fallita per URL {url}")
+            else:
+                logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
             raise ExtractorError(f"Estrazione DLHD completamente fallita: {str(e)}")
 
     async def _extract_lovecdn_stream(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
