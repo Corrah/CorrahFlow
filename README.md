@@ -5,8 +5,8 @@
 [![HLS](https://img.shields.io/badge/HLS-Streaming-red.svg)](https://developer.apple.com/streaming/)
 
 > **Un server proxy universale per streaming HLS, M3U8 e IPTV** 🎬  
-> Supporto nativo per Vavoo, DaddyLive HD, Sportsonline e molti altri.  
-> Interfaccia web integrata, Playlist Builder avanzato e configurazione zero.
+> Supporto nativo per Vavoo, DaddyLive HD e tutti i servizi di streaming  
+> Interfaccia web integrata e configurazione zero
 
 ---
 
@@ -18,8 +18,7 @@
 - [💻 Installazione Locale](#-installazione-locale)
 - [⚙️ Configurazione Proxy](#️-configurazione-proxy)
 - [🧰 Utilizzo del Proxy](#-utilizzo-del-proxy)
-- [🔗 Playlist Builder](#-playlist-builder)
-- [🔧 Configurazione Avanzata](#-configurazione-avanzata)
+- [🔧 Configurazione](#-configurazione)
 - [📖 Architettura](#-architettura)
 
 ---
@@ -28,25 +27,17 @@
 
 | 🎯 **Proxy Universale** | 🔐 **Estrattori Specializzati** | ⚡ **Performance** |
 |------------------------|------------------------|-------------------|
-| HLS, M3U8, MPD, DLHD streams | Vavoo, DLHD, Sportsonline, VixSrc | Connessioni async e keep-alive |
+| HLS, M3U8, MPD, DLHD streams, VIXSRC | Vavoo, DLHD, Sportsonline, VixSrc | Connessioni async e keep-alive |
 | **🔓 DRM Decryption** | **🎬 MPD to HLS** | **🔑 ClearKey Support** |
 | CENC decryption con PyCryptodome | Conversione automatica DASH → HLS | Server-side ClearKey per VLC |
 
-| 🌐 **Multi-formato** | 🛡️ **Anti-Bot System** | 🚀 **Scalabilità** |
+| 🌐 **Multi-formato** | 🔄 **Retry Logic** | 🚀 **Scalabilità** |
 |--------------------|-------------------|------------------|
-| Supporto #EXTVLCOPT e #EXTHTTP | Sessioni persistenti, Cookie Jar | Server asincrono |
+| Supporto #EXTVLCOPT e #EXTHTTP | Tentativi automatici | Server asincrono |
 
 | 🛠️ **Builder Integrato** | 📱 **Interfaccia Web** | 🔗 **Playlist Manager** |
 |--------------------------|----------------------|---------------------|
-| Combinazione playlist, Sort A-Z | Dashboard completa | Gestione automatica headers |
-
-### 📋 Servizi Supportati
-- **Vavoo**: Risoluzione automatica link `vavoo.to` con generazione firma.
-- **DaddyLiveHD (DLHD)**: Bypass anti-bot avanzato, supporto `newkso.ru` e `lovecdn.ru`.
-- **Sportsonline**: Estrazione automatica da iframe e decodifica stream.
-- **VixSrc**: Supporto streaming VOD.
-- **Mixdrop, Streamtape, VOE**: Estrazione link diretti dai file hoster.
-- **MPD (DASH)**: Conversione on-the-fly in HLS per massima compatibilità.
+| Combinazione playlist M3U | Dashboard completa | Gestione automatica headers |
 
 ---
 
@@ -93,6 +84,26 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 3. Deploy automatico
 4. **Pronto!**
 
+### 🌐 Railway / Heroku
+
+```bash
+# Railway
+railway login && railway init && railway up
+
+# Heroku
+heroku create EasyProxy && git push heroku main
+```
+
+### 🎯 Configurazione Cloud Ottimale
+
+**Il proxy funziona senza configurazione!**
+
+Ottimizzato per:
+- ✅ **Piattaforme gratuite** (HuggingFace, Render Free)
+- ✅ **Server limitati** (512MB - 1GB RAM)
+- ✅ **Streaming diretto** senza cache
+- ✅ **Massima compatibilità** con tutti i servizi
+
 ---
 
 ## 💻 Installazione Locale
@@ -102,7 +113,6 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 - **Python 3.8+**
 - **aiohttp**
 - **gunicorn**
-- **pycryptodome** (per DRM)
 
 ### 🔧 Installazione Completa
 
@@ -116,6 +126,33 @@ pip install -r requirements.txt
 
 # Avvio 
 gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
+```
+
+### 🐧 Termux (Android)
+
+```bash
+pkg update && pkg upgrade
+pkg install python git -y
+git clone https://github.com/nzo66/EasyProxy.git
+cd EasyProxy
+pip install -r requirements.txt
+gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
+```
+
+### 🐳 Docker Avanzato
+
+```bash
+# Build personalizzata
+docker build -t EasyProxy .
+
+# Run con configurazioni personalizzate
+docker run -d -p 7860:7860 \
+  --name EasyProxy EasyProxy
+
+# Run con volume per logs
+docker run -d -p 7860:7860 \
+  -v $(pwd)/logs:/app/logs \
+  --name EasyProxy EasyProxy
 ```
 
 ---
@@ -138,10 +175,12 @@ DLHD_PROXY=socks5://proxy1.com:1080,socks5://proxy2.com:1080
 
 # Proxy specifico per Vavoo
 VAVOO_PROXY=socks5://vavoo-proxy.net:9050
-
-# Password API per proteggere le playlist generate (Opzionale)
-API_PASSWORD=segretissimo
 ```
+
+Le variabili supportate sono:
+- `GLOBAL_PROXY`: Proxy di fallback per tutte le richieste.
+- `VAVOO_PROXY`: Proxy specifico per le richieste a Vavoo.
+- `DLHD_PROXY`: Proxy specifico per le richieste a DaddyLiveHD.
 
 ---
 
@@ -166,8 +205,9 @@ http://<server-ip>:7860/proxy/manifest.m3u8?url=<URL_STREAM>
 - **M3U playlist** - Liste canali IPTV  
 - **MPD (DASH)** - Streaming adattivo con conversione automatica HLS
 - **MPD + ClearKey DRM** - Decrittazione server-side CENC (VLC compatible)
-- **DLHD streams** - Flussi dinamici con bypass anti-bot
-- **Vavoo** - Risoluzione automatica
+- **DLHD streams** - Flussi dinamici
+- **VIXSRC** - Streaming VOD
+- **Sportsonline** - Streaming sportivo
 
 **Esempi:**
 ```bash
@@ -184,35 +224,55 @@ http://server:7860/playlist?url=https://iptv-provider.com/playlist.m3u
 http://server:7860/proxy/manifest.m3u8?url=https://stream.com/video.m3u8&h_user-agent=VLC&h_referer=https://site.com
 ```
 
----
+### 🔍 Estrazione Vavoo Automatico
 
-## 🔗 Playlist Builder
+**Risolve automaticamente:**
+- Link vavoo.to in stream diretti
+- Autenticazione API automatica
+- Headers ottimizzati per streaming
+
+### 📡 Risoluzione DaddyLive HD Automatico
+
+**Funzionalità:**
+- Risoluzione link DaddyLive HD
+- Bypass automatico restrizioni
+- Ottimizzazione qualità stream
+
+### ⚽ Risoluzione Sportsonline/Sportzonline Automatico
+
+**Funzionalità:**
+- Risoluzione link da `sportsonline.*` e `sportzonline.*`
+- Estrazione automatica da iframe
+- Supporto per decodifica Javascript (P.A.C.K.E.R.)
+
+### 🔗 Playlist Builder
 
 ```
 http://<server-ip>:7860/builder
 ```
 
-Il **Playlist Builder** permette di combinare multiple playlist M3U in un unico link, con opzioni avanzate per ogni sorgente.
+**Interfaccia completa per:**
+- ✅ Combinare playlist multiple
+- ✅ Gestione automatica Vavoo e DLHD
+- ✅ Supporto #EXTVLCOPT e #EXTHTTP  
+- ✅ Estrazione automatica #KODIPROP ClearKey
+- ✅ Proxy automatico per tutti gli stream
+- ✅ Compatibilità VLC, Kodi, IPTV players
 
-### Funzionalità Avanzate
+### 🔑 Headers Personalizzati
 
-Quando aggiungi una playlist, puoi specificare opzioni aggiuntive direttamente nell'URL (separatore `|`):
+Aggiungi headers con prefisso `h_`:
 
-- **Sort (A-Z)**: Ordina alfabeticamente i canali della playlist.
-- **No Proxy**: Usa i link originali senza passare per il proxy (utile per link diretti o locali).
-
-**Formato URL Builder:**
 ```
-URL_PLAYLIST|sort=true|noproxy=true
-```
-
-**Esempio Link Generato:**
-```
-http://server:7860/playlist?url=https://iptv.com/list.m3u|sort=true&url=https://local.com/list.m3u|noproxy=true
+http://server:7860/proxy/manifest.m3u8?url=STREAM_URL&h_user-agent=CustomUA&h_referer=https://site.com&h_authorization=Bearer token123
 ```
 
-### Protezione Playlist
-Se imposti `API_PASSWORD` nel file `.env`, puoi proteggere le tue playlist. Inserisci la password nel campo "API Password" del Builder per includerla nel link generato.
+**Headers supportati:**
+- `h_user-agent` - User Agent personalizzato
+- `h_referer` - Sito di riferimento  
+- `h_authorization` - Token di autorizzazione
+- `h_origin` - Dominio origine
+- `h_*` - Qualsiasi header personalizzato
 
 ---
 
@@ -222,10 +282,7 @@ Se imposti `API_PASSWORD` nel file `.env`, puoi proteggere le tue playlist. Inse
 
 1. **Richiesta Stream** → Endpoint proxy universale
 2. **Rilevamento Servizio** → Auto-detect Vavoo/DLHD/Generic
-3. **Estrazione URL** → Risoluzione link reali tramite `extractors/`
-    - *DLHD*: Gestione sessione, cookie, e nuovi flussi auth.
-    - *Vavoo*: Calcolo firma app e risoluzione JSON.
-    - *MPD*: Decrittazione CENC e conversione HLS.
+3. **Estrazione URL** → Risoluzione link reali
 4. **Proxy Stream** → Forward con headers ottimizzati
 5. **Risposta Client** → Stream diretto compatibile
 
@@ -234,7 +291,82 @@ Se imposti `API_PASSWORD` nel file `.env`, puoi proteggere le tue playlist. Inse
 - **aiohttp** - HTTP client non-bloccante
 - **Connection pooling** - Riutilizzo connessioni
 - **Retry automatico** - Gestione errori intelligente
-- **Caching Intelligente** - Cache risultati estrazione per ridurre carico (es. DLHD)
+
+### 🔐 Gestione Autenticazione
+
+- **Vavoo** - Sistema signature automatico
+- **DaddyLive** - Headers specializzati  
+- **Generic** - Supporto Authorization standard
+
+---
+
+## 🎯 Esempi Pratici
+
+### 📱 Player IPTV
+
+Configura il tuo player con:
+```
+http://tuo-server:7860/proxy/manifest.m3u8?url=STREAM_URL
+```
+
+### 🎬 VLC Media Player
+
+```bash
+vlc "http://tuo-server:7860/proxy/manifest.m3u8?url=https://example.com/stream.m3u8"
+```
+
+### 📺 Kodi
+
+Aggiungi come sorgente:
+```
+http://tuo-server:7860/proxy/manifest.m3u8?url=PLAYLIST_URL
+```
+
+### 🌐 Browser Web
+
+Apri direttamente nel browser:
+```
+http://tuo-server:7860/proxy/manifest.m3u8?url=https://stream.example.com/live.m3u8
+```
+
+---
+
+### 🔧 Gestione Docker
+
+```bash
+# Logs in tempo reale
+docker logs -f EasyProxy
+
+# Riavvio container
+docker restart EasyProxy
+
+# Stop/Start
+docker stop EasyProxy
+docker start EasyProxy
+
+# Rimozione completa
+docker rm -f EasyProxy
+```
+
+---
+
+## 🚀 Prestazioni
+
+### 📊 Benchmark Tipici
+
+| **Metric** | **Valore** | **Descrizione** |
+|------------|------------|-----------------|
+| **Latenza** | <50ms | Overhead proxy minimo |
+| **Throughput** | Unlimited | Limitato dalla banda disponibile |
+| **Connessioni** | 1000+ | Simultanee supportate |
+| **Memoria** | 50-200MB | Utilizzo tipico |
+
+### ⚡ Ottimizzazioni
+
+- **Connection Pooling** - Riutilizzo connessioni HTTP
+- **Async I/O** - Gestione non-bloccante delle richieste
+- **Keep-Alive** - Connessioni persistenti
+- **DNS Caching** - Cache risoluzione domini
 
 ---
 
@@ -248,93 +380,20 @@ I contributi sono benvenuti! Per contribuire:
 4. **Push** al branch (`git push origin feature/AmazingFeature`)
 5. **Apri** una Pull Request
 
----
+### 🐛 Segnalazione Bug
 
-## 📚 API Reference
+Per segnalare bug, apri una issue includendo:
+- Versione del proxy
+- Sistema operativo
+- URL di test che causa il problema
+- Log di errore completo
 
-EasyProxy espone diversi endpoint per la gestione dei flussi e delle playlist.
+### 💡 Richieste Feature
 
-### Endpoints Principali
-
-| Metodo | Endpoint | Descrizione | Parametri |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Pagina principale con stato del server. | - |
-| `GET` | `/builder` | Interfaccia Web per il Playlist Builder. | - |
-| `GET` | `/info` | Pagina informativa dettagliata. | - |
-| `GET` | `/api/info` | Informazioni server in formato JSON. | - |
-
-### Proxy & Streaming
-
-| Metodo | Endpoint | Descrizione | Parametri |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/proxy/manifest.m3u8` | **Proxy Universale**. Riscrive manifest HLS/DASH. | `url` (richiesto), `api_password`, headers custom (es. `h_Referer`) |
-| `GET` | `/proxy/hls/manifest.m3u8` | Alias per compatibilità MediaFlow. | `d` (url), `api_password`, headers custom |
-| `GET` | `/proxy/mpd/manifest.m3u8` | Proxy specifico per manifest DASH (.mpd). | `d` (url), `api_password`, `clearkey` |
-| `GET` | `/proxy/stream` | Proxy generico per stream diretti. | `d` (url), headers custom |
-| `GET` | `/key` | Proxy per chiavi di decifrazione AES-128. | `key_url`, `original_channel_url` |
-| `GET` | `/license` | Proxy per licenze DRM (ClearKey/Widevine). | `url`, `clearkey` |
-| `GET` | `/decrypt/segment.mp4` | Decifrazione segmenti lato server (CENC). | `url`, `key`, `key_id`, `init_url` |
-
-### Playlist Builder
-
-| Metodo | Endpoint | Descrizione | Parametri |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/playlist` | Genera una playlist combinata. | `url` (lista URL separati da `;`), `api_password` |
-| `POST` | `/generate_urls` | Generazione batch di URL proxy (compatibile MFP). | JSON body con lista URL |
-
----
-
-## 🧩 Dettagli Estrattori
-
-EasyProxy include moduli specializzati per estrarre stream da siti complessi.
-
-### 1. DaddyLiveHD (`dlhd.py`)
-*   **Domini**: `daddylive.mp`, `dlhd.sx`, `daddylivehd.sx`
-*   **Funzionalità**:
-    *   Bypassa protezioni anti-bot avanzate.
-    *   Gestisce il nuovo flusso di autenticazione `newkso.ru` / `lovecdn.ru`.
-    *   Mantiene sessioni persistenti per ridurre il carico.
-    *   Cache intelligente dei risultati di estrazione.
-
-### 2. Vavoo (`vavoo.py`)
-*   **Domini**: `vavoo.to`
-*   **Funzionalità**:
-    *   Risolve automaticamente i link `vavoo.to/live/...`.
-    *   Gestisce la firma crittografica richiesta dall'API Vavoo.
-    *   Aggiunge automaticamente i parametri `sig` corretti.
-
-### 3. Sportsonline (`sportsonline.py`)
-*   **Domini**: `sportzonline.st`
-*   **Funzionalità**:
-    *   Scansiona la pagina alla ricerca di iframe.
-    *   Decodifica script JavaScript offuscati (P.A.C.K.E.R.).
-    *   Estrae link `.m3u8` nascosti.
-
-### 4. VixSrc (`vixsrc.py`)
-*   **Domini**: `vixsrc.to`
-*   **Funzionalità**:
-    *   Supporta link embed, movie e tv.
-    *   Gestisce header `x-inertia` per navigazione API.
-    *   Estrae token e parametri di scadenza dagli script della pagina.
-
-### 5. VOE (`voe.py`)
-*   **Domini**: `voe.sx`
-*   **Funzionalità**:
-    *   Gestisce redirect multipli.
-    *   Decodifica payload offuscati in Base64 e rotazione caratteri.
-    *   Estrae il link diretto al file video.
-
-### 6. Streamtape (`streamtape.py`)
-*   **Domini**: `streamtape.com`
-*   **Funzionalità**:
-    *   Estrae ID e token IP dal codice HTML.
-    *   Costruisce l'URL finale `get_video`.
-
-### 7. Mixdrop (`mixdrop.py`)
-*   **Domini**: `mixdrop.co`, `mixdrop.to`
-*   **Funzionalità**:
-    *   Risolve la protezione "MDCore".
-    *   Esegue sandbox di codice JavaScript per estrarre `wurl`.
+Per nuove funzionalità, apri una issue descrivendo:
+- Funzionalità desiderata
+- Caso d'uso specifico
+- Priorità (bassa/media/alta)
 
 ---
 
