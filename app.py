@@ -406,18 +406,34 @@ class MPDToHLSConverter:
                             current_time += d
                             segment_number += 1
                     
-                    # Per LIVE: includi TUTTI i segmenti (DVR/timeshift) ma parti dal live edge
+                    # Per LIVE: FILTRA solo gli ultimi N segmenti per forzare partenza dal live edge
+                    # Questo è necessario perché molti player (Stremio, ExoPlayer) ignorano EXT-X-START
                     # Per VOD: prendi tutti normalmente
                     segments_to_use = all_segments
                     
                     if is_live and len(all_segments) > 0:
+                        # ✅ FIX LIVE: Includi solo gli ultimi ~30 secondi di segmenti
+                        # Questo forza il player a partire dal live edge invece che dall'inizio del DVR
+                        LIVE_WINDOW_SECONDS = 30
+                        total_duration = 0
+                        live_segments = []
+                        
+                        # Prendi segmenti dalla fine fino a raggiungere ~30 secondi
+                        for seg in reversed(all_segments):
+                            live_segments.insert(0, seg)
+                            total_duration += seg['duration']
+                            if total_duration >= LIVE_WINDOW_SECONDS:
+                                break
+                        
+                        segments_to_use = live_segments
+                        logger.info(f"🔴 LIVE: Filtrati {len(live_segments)}/{len(all_segments)} segmenti (ultimi ~{total_duration:.1f}s)")
+                        
                         # Calcola TARGETDURATION dal segmento più lungo
                         max_duration = max(seg['duration'] for seg in segments_to_use)
                         lines.insert(2, f'#EXT-X-TARGETDURATION:{int(max_duration) + 1}')
                         # MEDIA-SEQUENCE indica il primo segmento disponibile
                         first_seg_number = segments_to_use[0]['number']
                         lines.append(f'#EXT-X-MEDIA-SEQUENCE:{first_seg_number}')
-                        logger.info(f"🔴 LIVE DVR: {len(all_segments)} segmenti disponibili (DVR completo, partenza da live edge)")
                     else:
                         lines.append('#EXT-X-MEDIA-SEQUENCE:0')
                     
