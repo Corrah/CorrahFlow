@@ -321,7 +321,9 @@ class MPDToHLSConverter:
             # fMP4 richiede HLS versione 6 o 7
             # Per LIVE: non usare VOD, per VOD: usa VOD
             if is_live:
-                lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10']
+                lines = ['#EXTM3U', '#EXT-X-VERSION:7']
+                # Forza il player a partire dal live edge (fine della playlist)
+                lines.append('#EXT-X-START:TIME-OFFSET=-3.0,PRECISE=YES')
             else:
                 lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10', '#EXT-X-PLAYLIST-TYPE:VOD']
             
@@ -398,13 +400,20 @@ class MPDToHLSConverter:
                             current_time += d
                             segment_number += 1
                     
-                    # Per LIVE: prendi solo gli ultimi N segmenti (circa 30-60 secondi)
-                    # Per VOD: prendi tutti
-                    if is_live and len(all_segments) > 6:
-                        segments_to_use = all_segments[-6:]  # Ultimi 6 segmenti (~30-60 sec)
-                        logger.info(f"🔴 LIVE: usando ultimi {len(segments_to_use)} segmenti su {len(all_segments)} totali")
+                    # Per LIVE: includi TUTTI i segmenti (DVR/timeshift) ma parti dal live edge
+                    # Per VOD: prendi tutti normalmente
+                    segments_to_use = all_segments
+                    
+                    if is_live and len(all_segments) > 0:
+                        # Calcola TARGETDURATION dal segmento più lungo
+                        max_duration = max(seg['duration'] for seg in segments_to_use)
+                        lines.insert(2, f'#EXT-X-TARGETDURATION:{int(max_duration) + 1}')
+                        # MEDIA-SEQUENCE indica il primo segmento disponibile
+                        first_seg_number = segments_to_use[0]['number']
+                        lines.append(f'#EXT-X-MEDIA-SEQUENCE:{first_seg_number}')
+                        logger.info(f"🔴 LIVE DVR: {len(all_segments)} segmenti disponibili (DVR completo, partenza da live edge)")
                     else:
-                        segments_to_use = all_segments
+                        lines.append('#EXT-X-MEDIA-SEQUENCE:0')
                     
                     for seg in segments_to_use:
                         # Costruisci URL segmento
