@@ -304,6 +304,10 @@ class MPDToHLSConverter:
                 
             root = ET.fromstring(manifest_content)
             
+            # --- RILEVAMENTO LIVE vs VOD ---
+            mpd_type = root.get('type', 'static')
+            is_live = mpd_type.lower() == 'dynamic'
+            
             # Trova la Representation specifica
             representation = None
             adaptation_set = None
@@ -321,7 +325,13 @@ class MPDToHLSConverter:
                 return "#EXTM3U\n#EXT-X-ERROR: Representation not found"
 
             # fMP4 richiede HLS versione 6 o 7
-            lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10', '#EXT-X-PLAYLIST-TYPE:VOD']
+            # Per LIVE: non usare VOD e forza partenza dal live edge
+            if is_live:
+                lines = ['#EXTM3U', '#EXT-X-VERSION:7']
+                # Forza il player a partire dal live edge (fine della playlist)
+                lines.append('#EXT-X-START:TIME-OFFSET=-3.0,PRECISE=YES')
+            else:
+                lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10', '#EXT-X-PLAYLIST-TYPE:VOD']
             
             # --- GESTIONE DRM (ClearKey) ---
             # Decrittazione lato server con mp4decrypt
@@ -372,6 +382,8 @@ class MPDToHLSConverter:
                 # --- SEGMENT TIMELINE ---
                 segment_timeline = segment_template.find('mpd:SegmentTimeline', self.ns)
                 if segment_timeline is not None:
+                    # Prima raccogli tutti i segmenti
+                    all_segments = []
                     current_time = 0
                     segment_number = start_number
                     
@@ -385,28 +397,50 @@ class MPDToHLSConverter:
                         
                         # Ripeti per r + 1 volte
                         for _ in range(r + 1):
-                            # Costruisci URL segmento
-                            seg_name = media.replace('$RepresentationID$', str(rep_id))
-                            seg_name = seg_name.replace('$Number$', str(segment_number))
-                            seg_name = seg_name.replace('$Time$', str(current_time))
-                            
-                            full_seg_url = urljoin(base_url, seg_name)
-                            encoded_seg_url = urllib.parse.quote(full_seg_url, safe='')
-                            
-                            lines.append(f'#EXTINF:{duration_sec:.3f},')
-                            
-                            if server_side_decryption:
-                                # Usa endpoint di decrittazione
-                                # Passiamo init_url perché serve per la concatenazione
-                                decrypt_url = f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
-                                lines.append(decrypt_url)
-                            else:
-                                # Proxy standard
-                                proxy_seg_url = f"{proxy_base}/segment/{seg_name}?base_url={encoded_seg_url}{params}"
-                                lines.append(proxy_seg_url)
-                            
+                            all_segments.append({
+                                'time': current_time,
+                                'number': segment_number,
+                                'duration': duration_sec,
+                                'd': d
+                            })
                             current_time += d
                             segment_number += 1
+                    
+                    # Per LIVE: includi TUTTI i segmenti (DVR/timeshift) ma parti dal live edge
+                    # Per VOD: prendi tutti normalmente
+                    segments_to_use = all_segments
+                    
+                    if is_live and len(all_segments) > 0:
+                        # Calcola TARGETDURATION dal segmento più lungo
+                        max_duration = max(seg['duration'] for seg in segments_to_use)
+                        lines.insert(2, f'#EXT-X-TARGETDURATION:{int(max_duration) + 1}')
+                        # MEDIA-SEQUENCE indica il primo segmento disponibile
+                        first_seg_number = segments_to_use[0]['number']
+                        lines.append(f'#EXT-X-MEDIA-SEQUENCE:{first_seg_number}')
+                        logger.info(f"🔴 LIVE DVR: {len(all_segments)} segmenti disponibili (DVR completo, partenza da live edge)")
+                    else:
+                        lines.append('#EXT-X-MEDIA-SEQUENCE:0')
+                    
+                    for seg in segments_to_use:
+                        # Costruisci URL segmento
+                        seg_name = media.replace('$RepresentationID$', str(rep_id))
+                        seg_name = seg_name.replace('$Number$', str(seg['number']))
+                        seg_name = seg_name.replace('$Time$', str(seg['time']))
+                        
+                        full_seg_url = urljoin(base_url, seg_name)
+                        encoded_seg_url = urllib.parse.quote(full_seg_url, safe='')
+                        
+                        lines.append(f'#EXTINF:{seg["duration"]:.3f},')
+                        
+                        if server_side_decryption:
+                            # Usa endpoint di decrittazione
+                            # Passiamo init_url perché serve per la concatenazione
+                            decrypt_url = f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
+                            lines.append(decrypt_url)
+                        else:
+                            # Proxy standard
+                            proxy_seg_url = f"{proxy_base}/segment/{seg_name}?base_url={encoded_seg_url}{params}"
+                            lines.append(proxy_seg_url)
                 
                 # --- SEGMENT TEMPLATE (DURATION) ---
                 else:
@@ -434,7 +468,10 @@ class MPDToHLSConverter:
                             lines.append(f'#EXTINF:{duration_sec:.6f},')
                             lines.append(proxy_seg_url)
 
-            lines.append('#EXT-X-ENDLIST')
+            # Per VOD aggiungi ENDLIST, per LIVE no (indica stream in corso)
+            if not is_live:
+                lines.append('#EXT-X-ENDLIST')
+            
             return '\n'.join(lines)
 
         except Exception as e:
