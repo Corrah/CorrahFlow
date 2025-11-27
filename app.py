@@ -10,17 +10,16 @@ import xml.etree.ElementTree as ET
 import base64
 import binascii
 import json
-import ssl
 import aiohttp
 from aiohttp import web
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
+from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp_proxy import ProxyConnector
 from dotenv import load_dotenv
 import zipfile
 import io
 import platform
 import stat
-from utils.drm_decrypter import decrypt_segment
+from drm_decrypter import decrypt_segment
 
 load_dotenv() # Carica le variabili dal file .env
 
@@ -152,16 +151,11 @@ class GenericHLSExtractor:
                 logging.info(f"Utilizzo del proxy {proxy} per la sessione generica.")
                 connector = ProxyConnector.from_url(proxy)
             else:
-                # Create SSL context that doesn't verify certificates
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-                
                 connector = TCPConnector(
                     limit=20, limit_per_host=10, 
                     keepalive_timeout=60, enable_cleanup_closed=True, 
                     force_close=False, use_dns_cache=True,
-                    ssl=ssl_context
+                    ssl=False
                 )
 
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
@@ -304,6 +298,10 @@ class MPDToHLSConverter:
                 
             root = ET.fromstring(manifest_content)
             
+            # --- RILEVAMENTO LIVE vs VOD ---
+            mpd_type = root.get('type', 'static')
+            is_live = mpd_type.lower() == 'dynamic'
+            
             # Trova la Representation specifica
             representation = None
             adaptation_set = None
@@ -321,7 +319,13 @@ class MPDToHLSConverter:
                 return "#EXTM3U\n#EXT-X-ERROR: Representation not found"
 
             # fMP4 richiede HLS versione 6 o 7
-            lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10', '#EXT-X-PLAYLIST-TYPE:VOD']
+            # Per LIVE: non usare VOD, per VOD: usa VOD
+            if is_live:
+                lines = ['#EXTM3U', '#EXT-X-VERSION:7']
+                # Forza il player a partire dal live edge (fine della playlist)
+                lines.append('#EXT-X-START:TIME-OFFSET=-3.0,PRECISE=YES')
+            else:
+                lines = ['#EXTM3U', '#EXT-X-VERSION:7', '#EXT-X-TARGETDURATION:10', '#EXT-X-PLAYLIST-TYPE:VOD']
             
             # --- GESTIONE DRM (ClearKey) ---
             # Decrittazione lato server con mp4decrypt
@@ -372,6 +376,8 @@ class MPDToHLSConverter:
                 # --- SEGMENT TIMELINE ---
                 segment_timeline = segment_template.find('mpd:SegmentTimeline', self.ns)
                 if segment_timeline is not None:
+                    # Prima raccogli tutti i segmenti
+                    all_segments = []
                     current_time = 0
                     segment_number = start_number
                     
@@ -385,28 +391,50 @@ class MPDToHLSConverter:
                         
                         # Ripeti per r + 1 volte
                         for _ in range(r + 1):
-                            # Costruisci URL segmento
-                            seg_name = media.replace('$RepresentationID$', str(rep_id))
-                            seg_name = seg_name.replace('$Number$', str(segment_number))
-                            seg_name = seg_name.replace('$Time$', str(current_time))
-                            
-                            full_seg_url = urljoin(base_url, seg_name)
-                            encoded_seg_url = urllib.parse.quote(full_seg_url, safe='')
-                            
-                            lines.append(f'#EXTINF:{duration_sec:.3f},')
-                            
-                            if server_side_decryption:
-                                # Usa endpoint di decrittazione
-                                # Passiamo init_url perché serve per la concatenazione
-                                decrypt_url = f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
-                                lines.append(decrypt_url)
-                            else:
-                                # Proxy standard
-                                proxy_seg_url = f"{proxy_base}/segment/{seg_name}?base_url={encoded_seg_url}{params}"
-                                lines.append(proxy_seg_url)
-                            
+                            all_segments.append({
+                                'time': current_time,
+                                'number': segment_number,
+                                'duration': duration_sec,
+                                'd': d
+                            })
                             current_time += d
                             segment_number += 1
+                    
+                    # Per LIVE: includi TUTTI i segmenti (DVR/timeshift) ma parti dal live edge
+                    # Per VOD: prendi tutti normalmente
+                    segments_to_use = all_segments
+                    
+                    if is_live and len(all_segments) > 0:
+                        # Calcola TARGETDURATION dal segmento più lungo
+                        max_duration = max(seg['duration'] for seg in segments_to_use)
+                        lines.insert(2, f'#EXT-X-TARGETDURATION:{int(max_duration) + 1}')
+                        # MEDIA-SEQUENCE indica il primo segmento disponibile
+                        first_seg_number = segments_to_use[0]['number']
+                        lines.append(f'#EXT-X-MEDIA-SEQUENCE:{first_seg_number}')
+                        logger.info(f"🔴 LIVE DVR: {len(all_segments)} segmenti disponibili (DVR completo, partenza da live edge)")
+                    else:
+                        lines.append('#EXT-X-MEDIA-SEQUENCE:0')
+                    
+                    for seg in segments_to_use:
+                        # Costruisci URL segmento
+                        seg_name = media.replace('$RepresentationID$', str(rep_id))
+                        seg_name = seg_name.replace('$Number$', str(seg['number']))
+                        seg_name = seg_name.replace('$Time$', str(seg['time']))
+                        
+                        full_seg_url = urljoin(base_url, seg_name)
+                        encoded_seg_url = urllib.parse.quote(full_seg_url, safe='')
+                        
+                        lines.append(f'#EXTINF:{seg["duration"]:.3f},')
+                        
+                        if server_side_decryption:
+                            # Usa endpoint di decrittazione
+                            # Passiamo init_url perché serve per la concatenazione
+                            decrypt_url = f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
+                            lines.append(decrypt_url)
+                        else:
+                            # Proxy standard
+                            proxy_seg_url = f"{proxy_base}/segment/{seg_name}?base_url={encoded_seg_url}{params}"
+                            lines.append(proxy_seg_url)
                 
                 # --- SEGMENT TEMPLATE (DURATION) ---
                 else:
@@ -434,7 +462,10 @@ class MPDToHLSConverter:
                             lines.append(f'#EXTINF:{duration_sec:.6f},')
                             lines.append(proxy_seg_url)
 
-            lines.append('#EXT-X-ENDLIST')
+            # Per VOD aggiungi ENDLIST, per LIVE no (indica stream in corso)
+            if not is_live:
+                lines.append('#EXT-X-ENDLIST')
+            
             return '\n'.join(lines)
 
         except Exception as e:
@@ -610,23 +641,22 @@ class HLSProxy:
                 return await self._proxy_stream(request, stream_url, stream_headers)
             
         except Exception as e:
-            # ✅ MIGLIORATO: Distingui tra errori temporanei (sito offline) ed errori critici
-            error_msg = str(e).lower()
-            is_temporary_error = any(x in error_msg for x in ['403', 'forbidden', '502', 'bad gateway', 'timeout', 'connection', 'temporarily unavailable'])
-            
+            # ✅ AGGIORNATO: Se un estrattore specifico (DLHD, Vavoo) fallisce, riavvia il server per forzare un aggiornamento.
+            # Questo è utile se il sito ha cambiato qualcosa e l'estrattore è obsoleto.
+            restarting = False
             extractor_name = "sconosciuto"
             if DLHDExtractor and isinstance(extractor, DLHDExtractor):
+                restarting = True
                 extractor_name = "DLHDExtractor"
             elif VavooExtractor and isinstance(extractor, VavooExtractor):
+                restarting = True
                 extractor_name = "VavooExtractor"
 
-            # Se è un errore temporaneo (sito offline), logga solo un WARNING senza traceback
-            if is_temporary_error:
-                logger.warning(f"⚠️ {extractor_name}: Servizio temporaneamente non disponibile - {str(e)}")
-                return web.Response(text=f"Servizio temporaneamente non disponibile: {str(e)}", status=503)
-            
-            # Per errori veri (non temporanei), logga come CRITICAL con traceback completo
-            logger.critical(f"❌ Errore critico con {extractor_name}: {e}")
+            if restarting:
+                logger.critical(f"❌ Errore critico con {extractor_name}: {e}. Riavvio disabilitato per stabilità.")
+                # await asyncio.sleep(1)  # Attesa per il flush dei log
+                # os._exit(1)  # Uscita forzata per innescare il riavvio dal process manager (Docker, Gunicorn)
+
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
 
@@ -705,20 +735,9 @@ class HLSProxy:
             return web.json_response(response_data)
 
         except Exception as e:
-            error_message = str(e).lower()
-            # Per errori attesi (video non trovato, servizio non disponibile), non stampare il traceback
-            is_expected_error = any(x in error_message for x in [
-                'not found', 'unavailable', '403', 'forbidden', 
-                '502', 'bad gateway', 'timeout', 'temporarily unavailable'
-            ])
-            
-            if is_expected_error:
-                logger.warning(f"⚠️ Extractor request failed (expected error): {e}")
-            else:
-                logger.error(f"❌ Error in extractor request: {e}")
-                import traceback
-                traceback.print_exc()
-            
+            logger.error(f"❌ Error in extractor request: {e}")
+            import traceback
+            traceback.print_exc()
             return web.Response(text=str(e), status=500)
 
     async def handle_license_request(self, request):
@@ -1168,18 +1187,8 @@ class HLSProxy:
                     await response.write_eof()
                     return response
                     
-        except (ClientPayloadError, ConnectionResetError, OSError) as e:
-            # Errori tipici di disconnessione del client
-            logger.info(f"ℹ️ Client disconnesso dallo stream: {stream_url} ({str(e)})")
-            return web.Response(text="Client disconnected", status=499)
-            
-        except (ServerDisconnectedError, ClientConnectionError, asyncio.TimeoutError) as e:
-            # Errori di connessione upstream
-            logger.warning(f"⚠️ Connessione persa con la sorgente: {stream_url} ({str(e)})")
-            return web.Response(text=f"Upstream connection lost: {str(e)}", status=502)
-
         except Exception as e:
-            logger.error(f"❌ Errore generico nel proxy dello stream: {str(e)}")
+            logger.error(f"Errore nel proxy dello stream: {str(e)}")
             return web.Response(text=f"Errore stream: {str(e)}", status=500)
 
     def _rewrite_mpd_manifest(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, clearkey_param: str = None, api_password: str = None) -> str:
@@ -1632,7 +1641,7 @@ class HLSProxy:
                 if init_url in self.init_cache:
                     init_content = self.init_cache[init_url]
                 else:
-                    async with session.get(init_url, headers=headers, ssl=False) as resp:
+                    async with session.get(init_url, headers=headers) as resp:
                         if resp.status == 200:
                             init_content = await resp.read()
                             self.init_cache[init_url] = init_content
@@ -1641,7 +1650,7 @@ class HLSProxy:
                             return web.Response(status=502)
 
             # --- 2. Scarica Media Segment ---
-            async with session.get(url, headers=headers, ssl=False) as resp:
+            async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     logger.error(f"❌ Failed to fetch segment: {resp.status}")
                     return web.Response(status=502)
@@ -1737,37 +1746,6 @@ class HLSProxy:
             logger.error(f"❌ Error generating URLs: {e}")
             return web.Response(text=str(e), status=500)
 
-    async def handle_proxy_ip(self, request):
-        """Restituisce l'indirizzo IP pubblico del server (o del proxy se configurato)."""
-        if not check_password(request):
-            return web.Response(status=401, text="Unauthorized: Invalid API Password")
-
-        try:
-            # Usa un proxy globale se configurato, altrimenti connessione diretta
-            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
-            
-            # Crea una sessione dedicata con il proxy configurato
-            if proxy:
-                logger.info(f"🌍 Checking IP via proxy: {proxy}")
-                connector = ProxyConnector.from_url(proxy)
-            else:
-                connector = TCPConnector()
-            
-            timeout = ClientTimeout(total=10)
-            async with ClientSession(timeout=timeout, connector=connector) as session:
-                # Usa un servizio esterno per determinare l'IP pubblico
-                async with session.get('https://api.ipify.org?format=json') as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return web.json_response(data)
-                    else:
-                        logger.error(f"❌ Failed to fetch IP: {resp.status}")
-                        return web.Response(text="Failed to fetch IP", status=502)
-                    
-        except Exception as e:
-            logger.error(f"❌ Error fetching IP: {e}")
-            return web.Response(text=str(e), status=500)
-
     async def cleanup(self):
         """Pulizia delle risorse"""
         try:
@@ -1824,9 +1802,6 @@ def create_app():
     
     # ✅ NUOVO: Endpoint per generazione URL (compatibilità MFP)
     app.router.add_post('/generate_urls', proxy.handle_generate_urls)
-
-    # ✅ NUOVO: Endpoint per ottenere l'IP pubblico
-    app.router.add_get('/proxy/ip', proxy.handle_proxy_ip)
     
     # Gestore OPTIONS generico per CORS
     app.router.add_route('OPTIONS', '/{tail:.*}', proxy.handle_options)
