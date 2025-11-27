@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HLS Proxy - Playlist Builder</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
@@ -660,17 +659,6 @@
                             </button>
                         </div>
                     </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">API Password (Opzionale)</label>
-                        <div class="input-group">
-                            <input type="password" id="apiPasswordInput" class="form-input"
-                                placeholder="Inserisci la password API se richiesta dal server">
-                        </div>
-                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">
-                            Questa password verrà inclusa nel link generato e usata per autenticare le richieste.
-                        </small>
-                    </div>
                 </form>
 
                 <div class="form-group">
@@ -731,7 +719,6 @@
 
             initializeElements() {
                 this.urlInput = document.getElementById('urlInput');
-                this.apiPasswordInput = document.getElementById('apiPasswordInput');
                 this.addUrlBtn = document.getElementById('addUrl');
                 this.playlistList = document.getElementById('playlistList');
                 this.clearBtn = document.getElementById('clearBtn');
@@ -749,7 +736,6 @@
                         this.addPlaylist();
                     }
                 });
-                this.apiPasswordInput.addEventListener('input', () => this.generatePlaylistLink());
                 this.clearBtn.addEventListener('click', () => this.clearPlaylists());
                 this.copyBtn.addEventListener('click', () => this.copyToClipboard());
             }
@@ -873,16 +859,7 @@
                 });
                 const urlString = encodedDefinitions.join(';');
                 const baseUrl = window.location.origin;
-                
-                let finalUrl = `${baseUrl}/playlist?url=${urlString}`;
-                
-                // Aggiungi api_password se presente
-                const apiPassword = this.apiPasswordInput.value.trim();
-                if (apiPassword) {
-                    finalUrl += `&api_password=${encodeURIComponent(apiPassword)}`;
-                }
-                
-                return finalUrl;
+                return `${baseUrl}/playlist?url=${urlString}`;
             }
 
             displayResult(link) {

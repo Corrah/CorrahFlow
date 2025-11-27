@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Info - HLS Proxy Server</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -89,7 +88,7 @@
             position: relative;
         }
 
-        /* Animated Background Particles */
+        /* Animated Background */
         body::before {
             content: '';
             position: fixed;
@@ -97,26 +96,23 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: 
-                radial-gradient(circle at 15% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 85% 60%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 50% 90%, rgba(6, 182, 212, 0.06) 0%, transparent 50%);
-            animation: particleFloat 30s ease-in-out infinite;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 50%);
+            animation: backgroundFloat 25s ease-in-out infinite;
             z-index: -1;
         }
 
-        @keyframes particleFloat {
-            0%, 100% { 
-                transform: translateY(0) rotate(0deg) scale(1); 
-                opacity: 0.8;
+        @keyframes backgroundFloat {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg) scale(1);
             }
-            33% { 
-                transform: translateY(-15px) rotate(2deg) scale(1.02); 
-                opacity: 1;
+            33% {
+                transform: translateY(-20px) rotate(1deg) scale(1.02);
             }
-            66% { 
-                transform: translateY(15px) rotate(-2deg) scale(0.98); 
-                opacity: 0.9;
+            66% {
+                transform: translateY(20px) rotate(-1deg) scale(0.98);
             }
         }
 
@@ -764,115 +760,6 @@
                         </li>
                     </ul>
                 </div>
-
-                <!-- MediaFlow Compatible HLS -->
-                <div class="endpoint-card">
-                    <div class="endpoint-header">
-                        <span class="endpoint-method">GET</span>
-                        <code class="endpoint-path">/proxy/hls/manifest.m3u8?d=&lt;URL&gt;</code>
-                    </div>
-                    <p class="endpoint-description">
-                        Endpoint compatibile con MediaFlow-Proxy per flussi HLS.
-                    </p>
-                    <ul class="feature-list">
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Parametro <code>d</code> per l'URL di destinazione</span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Compatibilità drop-in per client MediaFlow</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- DASH / MPD Proxy -->
-                <div class="endpoint-card">
-                    <div class="endpoint-header">
-                        <span class="endpoint-method">GET</span>
-                        <code class="endpoint-path">/proxy/mpd/manifest.m3u8?d=&lt;URL_MPD&gt;</code>
-                    </div>
-                    <p class="endpoint-description">
-                        Proxy per manifest DASH (.mpd) con conversione on-the-fly.
-                    </p>
-                    <ul class="feature-list">
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span><strong>Conversione HLS:</strong> Trasforma automaticamente MPD in M3U8 per player non compatibili</span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span><strong>Nativo:</strong> Usa <code>format=mpd</code> per mantenere il formato originale</span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Supporto ClearKey DRM integrato</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Extractor API -->
-                <div class="endpoint-card">
-                    <div class="endpoint-header">
-                        <span class="endpoint-method">GET</span>
-                        <code class="endpoint-path">/extractor/video?url=&lt;URL&gt;</code>
-                    </div>
-                    <p class="endpoint-description">
-                        API di estrazione avanzata (MediaFlow compatible).
-                    </p>
-                    <ul class="feature-list">
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span><code>redirect_stream=true</code> (default): Redirect 302 immediato allo stream</span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span><code>redirect_stream=false</code>: Restituisce JSON con metadati e headers</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- AES Key Proxy -->
-                <div class="endpoint-card">
-                    <div class="endpoint-header">
-                        <span class="endpoint-method">GET</span>
-                        <code class="endpoint-path">/key?key_url=&lt;URL&gt;</code>
-                    </div>
-                    <p class="endpoint-description">
-                        Proxy sicuro per chiavi di decrittazione AES-128.
-                    </p>
-                    <ul class="feature-list">
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Gestione headers di autenticazione per le chiavi</span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Supporto chiavi statiche e dinamiche</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- DRM License Proxy -->
-                <div class="endpoint-card">
-                    <div class="endpoint-header">
-                        <span class="endpoint-method">GET/POST</span>
-                        <code class="endpoint-path">/license?url=&lt;URL&gt;</code>
-                    </div>
-                    <p class="endpoint-description">
-                        Proxy per richieste di licenza DRM (ClearKey, Widevine).
-                    </p>
-                    <ul class="feature-list">
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Supporto ClearKey statico: <code>?clearkey=KID:KEY</code></span>
-                        </li>
-                        <li class="feature-item">
-                            <span class="feature-bullet">•</span>
-                            <span>Proxy trasparente per server di licenza remoti</span>
-                        </li>
-                    </ul>
-                </div>
             </section>
 
             <!-- Caratteristiche Avanzate -->
@@ -1157,25 +1044,6 @@
                     statusBanner.style.animation = 'statusPulse 2s ease-in-out infinite';
                 }, 600);
             });
-
-            // Effetto parallax leggero per il background
-            let ticking = false;
-
-            function updateParallax() {
-                const scrollTop = window.pageYOffset;
-                const rate = scrollTop * -0.5;
-                document.body.style.transform = `translate3d(0, ${rate}px, 0)`;
-                ticking = false;
-            }
-
-            function requestTick() {
-                if (!ticking) {
-                    requestAnimationFrame(updateParallax);
-                    ticking = true;
-                }
-            }
-
-            window.addEventListener('scroll', requestTick);
 
             // Intersection Observer per animazioni di entrata
             const observerOptions = {

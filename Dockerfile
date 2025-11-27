@@ -25,5 +25,4 @@ LABEL org.opencontainers.image.source="https://github.com/nzo66/EasyProxy"
 EXPOSE 7860
 
 # Comando per avviare l'app in produzione con Gunicorn
-# Ridotto a 2 workers per evitare crash e aggiunto timeout più lungo
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "--timeout", "120", "--graceful-timeout", "120", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "--worker-class", "aiohttp.worker.GunicornWebWorker", "app:app"]

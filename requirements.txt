@@ -4,5 +4,3 @@ gunicorn
 python-dotenv
 zstandard
 pycryptodome
-beautifulsoup4
-lxml
