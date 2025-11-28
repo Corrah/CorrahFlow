@@ -191,10 +191,15 @@ class GenericHLSExtractor:
         # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
         # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
         # Gli header necessari (Referer, User-Agent) vengono gestiti tramite i parametri h_.
+        # ✅ FIX: Prevent IP Leakage. Explicitly filter out X-Forwarded-For and similar headers.
+        # Only allow specific headers that are safe or necessary for authentication.
         for h, v in self.request_headers.items():
-            # ✅ AGGIORNATO: Includiamo anche Referer e User-Agent espliciti dal client
-            if h.lower() in ["authorization", "x-api-key", "x-auth-token", "referer", "user-agent"]:
+            h_lower = h.lower()
+            if h_lower in ["authorization", "x-api-key", "x-auth-token", "referer", "user-agent", "cookie"]:
                 headers[h] = v
+            # Explicitly block forwarding of IP-related headers
+            if h_lower in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
+                continue
 
         return {
             "destination_url": url, 
@@ -1065,10 +1070,15 @@ class HLSProxy:
         try:
             headers = dict(stream_headers)
             
-            # Passa attraverso alcuni headers del client
+            # Passa attraverso alcuni headers del client, ma FILTRA quelli che potrebbero leakare l'IP
             for header in ['range', 'if-none-match', 'if-modified-since']:
                 if header in request.headers:
                     headers[header] = request.headers[header]
+            
+            # Rimuovi esplicitamente headers che potrebbero rivelare l'IP originale
+            for h in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
+                if h in headers:
+                    del headers[h]
             
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
             connector_kwargs = {}
