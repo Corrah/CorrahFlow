@@ -127,6 +127,12 @@ try:
 except ImportError:
     logger.warning("⚠️ Modulo StreamtapeExtractor non trovato.")
 
+try:
+    from extractors.orion import OrionExtractor
+    logger.info("✅ Modulo OrionExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo OrionExtractor non trovato.")
+
 # --- Classi Unite ---
 class ExtractorError(Exception):
     """Eccezione personalizzata per errori di estrazione"""
@@ -564,6 +570,11 @@ class HLSProxy:
                 key = "streamtape"
                 if key not in self.extractors:
                     self.extractors[key] = StreamtapeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
+            elif "orionoid.com" in url:
+                key = "orion"
+                if key not in self.extractors:
+                    self.extractors[key] = OrionExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
             else:
                 # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
