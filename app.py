@@ -21,14 +21,7 @@ import io
 import platform
 import stat
 from datetime import datetime, timezone, timedelta
-
-# Importa utility per decrittazione se presente
-try:
-    from utils.drm_decrypter import decrypt_segment
-except ImportError:
-    # Fallback dummy se il file utils non esiste
-    def decrypt_segment(init, seg, key_id, key):
-        return seg
+from utils.drm_decrypter import decrypt_segment
 
 load_dotenv() # Carica le variabili dal file .env
 
