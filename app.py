@@ -1063,14 +1063,56 @@ class HLSProxy:
             
             logger.info(f"📦 Proxy Segment: {segment_name}")
             
-            # Usa User-Agent Chrome per sicurezza
-            return await self._proxy_stream(request, segment_url, {
-                "User-Agent": DEFAULT_USER_AGENT,
-                "Referer": base_url
-            })
+            # Gestisce la risposta del proxy per il segmento
+            return await self._proxy_segment(request, segment_url, {
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "referer": base_url
+            }, segment_name)
             
         except Exception as e:
             logger.error(f"Errore nel proxy segmento .ts: {str(e)}")
+            return web.Response(text=f"Errore segmento: {str(e)}", status=500)
+
+    async def _proxy_segment(self, request, segment_url, stream_headers, segment_name):
+        """Proxy dedicato per segmenti con Content-Disposition corretto."""
+        try:
+            headers = dict(stream_headers)
+            
+            # Passa attraverso alcuni headers del client
+            for header in ['range', 'if-none-match', 'if-modified-since']:
+                if header in request.headers:
+                    headers[header] = request.headers[header]
+            
+            proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
+            connector_kwargs = {}
+            if proxy:
+                connector_kwargs['proxy'] = proxy
+
+            timeout = ClientTimeout(total=60, connect=30)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(segment_url, headers=headers, **connector_kwargs, ssl=False) as resp:
+                    response_headers = {}
+                    
+                    for header in ['content-type', 'content-length', 'content-range', 
+                                 'accept-ranges', 'last-modified', 'etag']:
+                        if header in resp.headers:
+                            response_headers[header] = resp.headers[header]
+                    
+                    response_headers['Access-Control-Allow-Origin'] = '*'
+                    response_headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS'
+                    response_headers['Access-Control-Allow-Headers'] = 'Range, Content-Type'
+                    
+                    response = web.StreamResponse(status=resp.status, headers=response_headers)
+                    await response.prepare(request)
+                    
+                    async for chunk in resp.content.iter_chunked(8192):
+                        await response.write(chunk)
+                    
+                    await response.write_eof()
+                    return response
+                    
+        except Exception as e:
+            logger.error(f"Errore nel proxy del segmento: {str(e)}")
             return web.Response(text=f"Errore segmento: {str(e)}", status=500)
 
     async def _proxy_stream(self, request, stream_url, stream_headers):
@@ -1340,22 +1382,16 @@ class HLSProxy:
             return manifest_content 
 
     async def _rewrite_manifest_urls(self, manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '', api_password: str = None) -> str:
-        """
-        Riscrive gli URL nei manifest HLS.
-        Unisce la logica di 'app.py' (supporto VixSrc) e 'app ok.py' (supporto estensioni AAC/MP4).
-        """
         lines = manifest_content.split('\n')
         rewritten_lines = []
         
-        # --- 1. Logica Speciale VixSrc (da app.py) ---
-        # Se lo stream è VixSrc, filtriamo per la qualità massima
+        # Logica speciale per VixSrc per filtrare la qualità
         is_vixsrc_stream = False
         try:
             original_request_url = stream_headers.get('referer', base_url)
             extractor = await self.get_extractor(original_request_url, {})
             if hasattr(extractor, 'is_vixsrc') and extractor.is_vixsrc:
                 is_vixsrc_stream = True
-                logger.info("Rilevato stream VixSrc. Applicherò la logica di filtraggio qualità.")
         except Exception:
             pass
 
@@ -1367,32 +1403,25 @@ class HLSProxy:
                     if bandwidth_match:
                         bandwidth = int(bandwidth_match.group(1))
                         streams.append({'bandwidth': bandwidth, 'inf': line, 'url': lines[i+1]})
-            
             if streams:
-                # Filtra per la qualità più alta e riscrivi il manifest
                 highest_quality_stream = max(streams, key=lambda x: x['bandwidth'])
-                logger.info(f"VixSrc: Selezionata qualità bandwidth {highest_quality_stream['bandwidth']}.")
-                
                 rewritten_lines.append('#EXTM3U')
                 for line in lines:
                     if line.startswith('#EXT-X-MEDIA:') or line.startswith('#EXT-X-STREAM-INF:') or (line and not line.startswith('#')):
                         continue 
-                
                 rewritten_lines.extend([line for line in lines if line.startswith('#EXT-X-MEDIA:')])
                 rewritten_lines.append(highest_quality_stream['inf'])
                 rewritten_lines.append(highest_quality_stream['url'])
-                # Ritorna subito il manifest filtrato per VixSrc
                 return '\n'.join(rewritten_lines)
 
-        # --- 2. Logica Standard (da app ok.py) con supporto AAC ---
+        # Logica di riscrittura standard e avanzata
         header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
         if api_password:
             header_params += f"&api_password={api_password}"
 
         for line in lines:
             line = line.strip()
-            
-            # --- Gestione Chiavi DRM (#EXT-X-KEY) ---
+
             if line.startswith('#EXT-X-KEY:') and 'URI=' in line:
                 uri_start = line.find('URI="') + 5
                 uri_end = line.find('"', uri_start)
@@ -1401,59 +1430,59 @@ class HLSProxy:
                     absolute_key_url = urljoin(base_url, original_key_url)
                     encoded_key_url = urllib.parse.quote(absolute_key_url, safe='')
                     encoded_original_channel_url = urllib.parse.quote(original_channel_url, safe='')
-                    proxy_key_url = f"{proxy_base}/key?key_url={encoded_key_url}&original_channel_url={encoded_original_channel_url}{header_params}"
+                    proxy_key_url = f"{proxy_base}/key?key_url={encoded_key_url}&original_channel_url={encoded_original_channel_url}"
+                    
+                    # Passa tutti gli header anche alla richiesta della chiave
+                    key_header_params = "".join(
+                        [f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" 
+                         for key, value in stream_headers.items()]
+                    )
+                    proxy_key_url += key_header_params
+                    if api_password:
+                        proxy_key_url += f"&api_password={api_password}"
+
                     new_line = line[:uri_start] + proxy_key_url + line[uri_end:]
                     rewritten_lines.append(new_line)
                 else:
                     rewritten_lines.append(line)
-            
-            # --- Gestione Init Segment fMP4 (#EXT-X-MAP) ---
-            elif line.startswith('#EXT-X-MAP:') and 'URI=' in line:
-                uri_start = line.find('URI="') + 5
-                uri_end = line.find('"', uri_start)
-                if uri_start > 4 and uri_end > uri_start:
-                    original_map_url = line[uri_start:uri_end]
-                    absolute_map_url = urljoin(base_url, original_map_url)
-                    encoded_map_url = urllib.parse.quote(absolute_map_url, safe='')
-                    proxy_map_url = f"{proxy_base}/proxy/hls/segment.mp4?d={encoded_map_url}{header_params}"
-                    new_line = line[:uri_start] + proxy_map_url + line[uri_end:]
-                    rewritten_lines.append(new_line)
-                else:
-                    rewritten_lines.append(line)
 
-            # --- Gestione Sub-Playlist (#EXT-X-MEDIA) ---
-            elif (line.startswith('#EXT-X-MEDIA:') or line.startswith('#EXT-X-I-FRAME-STREAM-INF:')) and 'URI=' in line:
+            elif (line.startswith('#EXT-X-MEDIA:') or line.startswith('#EXT-X-I-FRAME-STREAM-INF:') or line.startswith('#EXT-X-MAP:')) and 'URI=' in line:
                 uri_start = line.find('URI="') + 5
                 uri_end = line.find('"', uri_start)
                 if uri_start > 4 and uri_end > uri_start:
                     original_media_url = line[uri_start:uri_end]
                     absolute_media_url = urljoin(base_url, original_media_url)
                     encoded_media_url = urllib.parse.quote(absolute_media_url, safe='')
-                    proxy_media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_media_url}{header_params}"
+                    
+                    # I sub-manifest e le mappe di inizializzazione vengono gestiti in modo diverso
+                    if line.startswith('#EXT-X-MAP:'):
+                        # Le mappe sono segmenti, non manifest
+                        proxy_media_url = f"{proxy_base}/proxy/hls/segment.mp4?d={encoded_media_url}{header_params}"
+                    else:
+                        # I media e gli i-frame sono manifest
+                        proxy_media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_media_url}{header_params}"
+
                     new_line = line[:uri_start] + proxy_media_url + line[uri_end:]
                     rewritten_lines.append(new_line)
                 else:
                     rewritten_lines.append(line)
-
-            # --- Gestione Segmenti Video/Audio ---
+            
             elif line and not line.startswith('#'):
                 absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
                 encoded_url = urllib.parse.quote(absolute_url, safe='')
                 path = urlparse(absolute_url).path.lower()
                 
-                # Se è una playlist nidificata
-                if any(x in path for x in ['.m3u8', '.php', '.mpd', '.isml/manifest', 'playlist']):
+                # Logica di routing basata sull'estensione (dal vecchio codice)
+                if any(ext in path for ext in ['.m3u8', '.php', '.mpd', '.isml/manifest', 'playlist']):
                     proxy_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}{header_params}"
                 else:
-                    # Determina l'estensione corretta (Cruciale per player audio/video specifici)
-                    ext = ".ts" # Fallback
-                    if path.endswith('.mp4') or path.endswith('.m4s') or path.endswith('.isml'):
+                    ext = ".ts"
+                    if path.endswith(('.mp4', '.m4s', '.isml')):
                         ext = ".mp4"
                     elif path.endswith('.aac'):
-                        ext = ".aac" # <--- Fondamentale per Mediaset Audio
+                        ext = ".aac"
                     elif path.endswith('.m4a'):
                         ext = ".m4a"
-                    
                     proxy_url = f"{proxy_base}/proxy/hls/segment{ext}?d={encoded_url}{header_params}"
                 
                 rewritten_lines.append(proxy_url)
