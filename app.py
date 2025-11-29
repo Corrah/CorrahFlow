@@ -1078,34 +1078,27 @@ class HLSProxy:
         try:
             headers = dict(stream_headers)
             
-            # Normalizzazione Header e Forzatura User-Agent Chrome
-            normalized_headers = {}
-            for k, v in headers.items():
-                if k.lower() == 'referer':
-                    normalized_headers['Referer'] = v
-                elif k.lower() == 'origin':
-                    normalized_headers['Origin'] = v
-                elif k.lower() == 'authorization':
-                    normalized_headers['Authorization'] = v
-                elif k.lower() == 'range':
-                     normalized_headers['Range'] = v
-                else:
-                    normalized_headers[k] = v
+            # Passa attraverso alcuni headers del client, ma FILTRA quelli che potrebbero leakare l'IP
+            for header in ['range', 'if-none-match', 'if-modified-since']:
+                if header in request.headers:
+                    headers[header] = request.headers[header]
             
-            # Assicurati che User-Agent sia impostato
-            if 'User-Agent' not in normalized_headers:
-                normalized_headers['User-Agent'] = DEFAULT_USER_AGENT
+            # Rimuovi esplicitamente headers che potrebbero rivelare l'IP originale
+            for h in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
+                if h in headers:
+                    del headers[h]
+
+            # Normalizza gli header critici (User-Agent, Referer) in Title-Case
+            for key in list(headers.keys()):
+                if key.lower() == 'user-agent':
+                    headers['User-Agent'] = headers.pop(key)
+                elif key.lower() == 'referer':
+                    headers['Referer'] = headers.pop(key)
+                elif key.lower() == 'origin':
+                    headers['Origin'] = headers.pop(key)
+                elif key.lower() == 'authorization':
+                    headers['Authorization'] = headers.pop(key)
             
-            headers = normalized_headers
-
-            # Rimuovi Range se è un manifest per evitare errori, altrimenti passalo
-            if any(ext in stream_url.lower() for ext in ['.m3u8', '.mpd', '.isml/manifest', '.mpd/manifest', '.php']):
-                if 'Range' in headers: del headers['Range']
-            else:
-                for header in ['range', 'if-none-match', 'if-modified-since']:
-                    if header in request.headers:
-                        headers[header] = request.headers[header]
-
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
             connector_kwargs = {}
             if proxy:
