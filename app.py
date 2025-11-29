@@ -728,22 +728,27 @@ class HLSProxy:
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
                 return await self._proxy_stream(request, stream_url, stream_headers)
-            
+
         except Exception as e:
+            # Logica di gestione errori avanzata (dal vecchio codice)
             error_msg = str(e).lower()
-            is_temporary_error = any(x in error_msg for x in ['403', 'forbidden', '502', 'bad gateway', 'timeout', 'connection', 'temporarily unavailable'])
-            
+            is_temporary_error = any(x in error_msg for x in [
+                '403', 'forbidden', '502', 'bad gateway', 'timeout', 
+                'connection', 'temporarily unavailable', 'not found'
+            ])
+
             extractor_name = "sconosciuto"
             if DLHDExtractor and isinstance(extractor, DLHDExtractor):
                 extractor_name = "DLHDExtractor"
             elif VavooExtractor and isinstance(extractor, VavooExtractor):
                 extractor_name = "VavooExtractor"
 
-            # Se è un errore temporaneo (sito offline), logga solo un WARNING
+            # Se è un errore temporaneo (sito offline), logga solo un WARNING senza traceback
             if is_temporary_error:
                 logger.warning(f"⚠️ {extractor_name}: Servizio temporaneamente non disponibile - {str(e)}")
                 return web.Response(text=f"Servizio temporaneamente non disponibile: {str(e)}", status=503)
-            
+
+            # Per errori veri (non temporanei), logga come CRITICAL con traceback completo
             logger.critical(f"❌ Errore critico con {extractor_name}: {e}")
             logger.exception(f"Errore nella richiesta proxy: {str(e)}")
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
