@@ -1492,7 +1492,7 @@ class HLSProxy:
     async def handle_api_info(self, request):
         """Endpoint API che restituisce le informazioni sul server in formato JSON."""
         info = {
-            "proxy": "HLS Proxy Server (Merged Version)",
+            "proxy": "HLS Proxy Server",
             "version": "2.6.0",  # Versione incrementata per merge
             "status": "✅ Funzionante",
             "features": [
@@ -1753,7 +1753,7 @@ def main():
     if sys.platform == 'win32':
         logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
-    print("🚀 Avvio HLS Proxy Server (Merged v2.6.0)...")
+    print("🚀 Avvio HLS Proxy Server ...")
     print("📡 Server disponibile su: http://localhost:7860")
     print("📡 Oppure: http://server-ip:7860")
     print("🔗 Endpoints principali:")
