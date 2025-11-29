@@ -1,4 +1,4 @@
-#Adapted for use in MediaFlowProxy from:
+# Adapted for use in EasyProxy from:
 #https://github.com/einars/js-beautify/blob/master/python/jsbeautifier/unpackers/packer.py
 # Unpacker for Dean Edward's p.a.c.k.e.r, a part of javascript beautifier
 # by Einar Lielmanis <einar@beautifier.io>

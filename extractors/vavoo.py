@@ -21,7 +21,7 @@ class VavooExtractor:
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         self.session = None
-        self.mediaflow_endpoint = "proxy_stream_endpoint"
+        self.endpoint_type = "proxy_stream_endpoint"
         self.proxies = proxies or []
 
     def _get_random_proxy(self):
@@ -215,7 +215,7 @@ class VavooExtractor:
         return {
             "destination_url": resolved_url,
             "request_headers": stream_headers,
-            "mediaflow_endpoint": self.mediaflow_endpoint,
+            "endpoint_type": self.endpoint_type,
         }
 
     async def close(self):

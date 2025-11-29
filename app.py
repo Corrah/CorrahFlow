@@ -195,7 +195,7 @@ class GenericHLSExtractor:
         return {
             "destination_url": url, 
             "request_headers": headers, 
-            "mediaflow_endpoint": "hls_proxy"
+            "endpoint_type": "hls_proxy"
         }
 
     async def close(self):
@@ -542,9 +542,59 @@ class HLSProxy:
             self.session = aiohttp.ClientSession(timeout=ClientTimeout(total=30))
         return self.session
 
-    async def get_extractor(self, url: str, request_headers: dict):
+    async def get_extractor(self, url: str, request_headers: dict, host: str = None):
         """Ottiene l'estrattore appropriato per l'URL"""
         try:
+            # 1. Selezione Manuale tramite parametro 'host'
+            if host:
+                host = host.lower()
+                key = host
+                
+                if host == "vavoo":
+                    proxies = VAVOO_PROXIES or GLOBAL_PROXIES
+                    if key not in self.extractors:
+                        self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
+                    return self.extractors[key]
+                
+                elif host in ["dlhd", "daddylive"]:
+                    key = "dlhd"
+                    proxies = DLHD_PROXIES or GLOBAL_PROXIES
+                    if key not in self.extractors:
+                        self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
+                    return self.extractors[key]
+                
+                elif host == "vixsrc":
+                    if key not in self.extractors:
+                        self.extractors[key] = VixSrcExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+                
+                elif host in ["sportsonline", "sportzonline"]:
+                    key = "sportsonline"
+                    if key not in self.extractors:
+                        self.extractors[key] = SportsonlineExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+                
+                elif host == "mixdrop":
+                    if key not in self.extractors:
+                        self.extractors[key] = MixdropExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+                
+                elif host == "voe":
+                    if key not in self.extractors:
+                        self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+                
+                elif host == "streamtape":
+                    if key not in self.extractors:
+                        self.extractors[key] = StreamtapeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+                
+                elif host == "orion":
+                    if key not in self.extractors:
+                        self.extractors[key] = OrionExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
+
+            # 2. Auto-detection basata sull'URL
             if "vavoo.to" in url:
                 key = "vavoo"
                 proxies = VAVOO_PROXIES or GLOBAL_PROXIES
@@ -632,7 +682,7 @@ class HLSProxy:
                 print(f"   Resolved Stream URL: {stream_url}")
                 print(f"   Stream Headers: {stream_headers}")
                 
-                # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
+                # Se redirect_stream è False, restituisci il JSON con i dettagli
                 if not redirect_stream:
                     # Costruisci l'URL del proxy per questo stream
                     scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
@@ -652,8 +702,8 @@ class HLSProxy:
                     response_data = {
                         "destination_url": stream_url,
                         "request_headers": stream_headers,
-                        "mediaflow_endpoint": result.get("mediaflow_endpoint", "hls_proxy"),
-                        "mediaflow_proxy_url": proxy_url,
+                        "endpoint_type": result.get("endpoint_type", "hls_proxy"),
+                        "proxy_url": proxy_url,
                         "query_params": {}
                     }
                     return web.json_response(response_data)
@@ -699,7 +749,7 @@ class HLSProxy:
             return web.Response(text=f"Errore proxy: {str(e)}", status=500)
 
     async def handle_extractor_request(self, request):
-        """Endpoint compatibile con MediaFlow-Proxy per ottenere informazioni sullo stream."""
+        """Endpoint per ottenere informazioni sullo stream."""
         logger.info(f"📥 Extractor Request: {request.url}")
         
         if not check_password(request):
@@ -709,32 +759,73 @@ class HLSProxy:
         try:
             # Supporta sia 'url' che 'd'
             url = request.query.get('url') or request.query.get('d')
+            host_param = request.query.get('host')
+            
             if not url:
-                return web.Response(text="Missing url or d parameter", status=400)
+                # Se non c'è URL, restituisci una pagina di aiuto JSON con gli host disponibili
+                help_response = {
+                    "message": "EasyProxy Extractor API",
+                    "usage": {
+                        "endpoint": "/extractor/video",
+                        "parameters": {
+                            "url": "(Required) URL to extract. Supports plain text, URL encoded, or Base64.",
+                            "host": "(Optional) Force specific extractor (bypass auto-detect).",
+                            "redirect_stream": "(Optional) 'true' to redirect to stream, 'false' for JSON.",
+                            "api_password": "(Optional) API Password if configured."
+                        }
+                    },
+                    "available_hosts": [
+                        "vavoo", "dlhd", "daddylive", "vixsrc", "sportsonline", 
+                        "mixdrop", "voe", "streamtape", "orion"
+                    ],
+                    "examples": [
+                        f"{request.scheme}://{request.host}/extractor/video?url=https://vavoo.to/channel/123",
+                        f"{request.scheme}://{request.host}/extractor/video?host=vavoo&url=https://custom-link.com",
+                        f"{request.scheme}://{request.host}/extractor/video?url=BASE64_STRING"
+                    ]
+                }
+                return web.json_response(help_response)
 
+            # 1. URL Decoding (Standard)
             try:
                 url = urllib.parse.unquote(url)
             except:
                 pass
 
-            redirect_stream = request.query.get('redirect_stream', 'false').lower() == 'true'
-            logger.info(f"🔍 Extracting: {url} (Redirect: {redirect_stream})")
+            # 2. Base64 Decoding (Try)
+            try:
+                # Tentativo di decodifica Base64 se non sembra un URL valido o se richiesto
+                # Aggiunge padding se necessario
+                padded_url = url + '=' * (-len(url) % 4)
+                decoded_bytes = base64.b64decode(padded_url, validate=True)
+                decoded_str = decoded_bytes.decode('utf-8').strip()
+                
+                # Verifica se il risultato sembra un URL valido
+                if decoded_str.startswith('http://') or decoded_str.startswith('https://'):
+                    url = decoded_str
+                    logger.info(f"🔓 URL Base64 decodificato: {url}")
+            except Exception:
+                # Non è Base64 o non è un URL valido, proseguiamo con l'originale
+                pass
 
-            extractor = await self.get_extractor(url, dict(request.headers))
+            redirect_stream = request.query.get('redirect_stream', 'false').lower() == 'true'
+            logger.info(f"🔍 Extracting: {url} (Host: {host_param}, Redirect: {redirect_stream})")
+
+            extractor = await self.get_extractor(url, dict(request.headers), host=host_param)
             result = await extractor.extract(url)
             
             stream_url = result["destination_url"]
             stream_headers = result.get("request_headers", {})
-            mediaflow_endpoint = result.get("mediaflow_endpoint", "hls_proxy")
+            endpoint_type = result.get("endpoint_type", "hls_proxy")
             
-            logger.info(f"✅ Extraction success: {stream_url[:50]}... Endpoint: {mediaflow_endpoint}")
+            logger.info(f"✅ Extraction success: {stream_url[:50]}... Endpoint: {endpoint_type}")
 
             scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             host = request.headers.get('X-Forwarded-Host', request.host)
             proxy_base = f"{scheme}://{host}"
             
             endpoint = "/proxy/hls/manifest.m3u8"
-            if mediaflow_endpoint == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
+            if endpoint_type == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
                  endpoint = "/proxy/stream"
             elif ".mpd" in stream_url:
                 endpoint = "/proxy/mpd/manifest.m3u8"
@@ -755,8 +846,8 @@ class HLSProxy:
             response_data = {
                 "destination_url": stream_url,
                 "request_headers": stream_headers,
-                "mediaflow_endpoint": mediaflow_endpoint,
-                "mediaflow_proxy_url": proxy_url,
+                "endpoint_type": endpoint_type,
+                "proxy_url": proxy_url,
                 "query_params": {}
             }
             
@@ -1588,7 +1679,7 @@ class HLSProxy:
             return web.Response(status=500, text=f"Decryption failed: {str(e)}")
 
     async def handle_generate_urls(self, request):
-        """Endpoint compatibile con MediaFlow-Proxy per generare URL proxy."""
+        """Endpoint per generare URL proxy."""
         try:
             data = await request.json()
             
@@ -1708,6 +1799,7 @@ def create_app():
     app.router.add_get('/proxy/hls/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/mpd/manifest.m3u8', proxy.handle_proxy_request)
     app.router.add_get('/proxy/stream', proxy.handle_proxy_request)
+    app.router.add_get('/extractor', proxy.handle_extractor_request)
     app.router.add_get('/extractor/video', proxy.handle_extractor_request)
     
     # Route Segmenti specifici (ts, mp4, aac)

@@ -184,6 +184,97 @@ Le variabili supportate sono:
 
 ---
 
+## 📚 API Endpoints
+
+### 🔍 Extractor API (`/extractor/video`)
+
+Questo endpoint **non può essere aperto direttamente** senza parametri. Serve per estrarre l'URL diretto dello stream da servizi supportati (come Vavoo, DLHD, ecc.).
+
+**Info e Aiuto:**
+Se apri `/extractor` o `/extractor/video` senza parametri, riceverai una risposta JSON con le istruzioni d'uso e la lista degli host supportati.
+
+**Come si usa:**
+**Come si usa:**
+Devi aggiungere `?url=` (o `?d=`) seguito dal link del video che vuoi processare.
+
+**Esempi Pratici:**
+
+1.  **Ottenere il JSON con i dettagli (Default):**
+    ```
+    http://tuo-server:7860/extractor/video?url=https://vavoo.to/channel/123
+    ```
+    *Restituisce un JSON con `destination_url`, `request_headers`, ecc.*
+
+2.  **Reindirizzare direttamente allo stream (Redirect):**
+    Aggiungi `&redirect_stream=true`. Utile per mettere il link direttamente in un player.
+    ```
+    http://tuo-server:7860/extractor/video?url=https://daddylive.mp/stream/stream-1.php&redirect_stream=true
+    ```
+    *Il server risponderà con un redirect 302 verso l'URL del proxy pronto per la riproduzione.*
+
+3.  **Specificare manualmente l'host (Bypass Auto-detect):**
+    Se l'auto-detection fallisce, puoi forzare l'uso di un estrattore specifico con `host=`.
+    ```
+    http://tuo-server:7860/extractor/video?host=vavoo&url=https://custom-link.com/123
+    ```
+
+4.  **URL in Base64:**
+    Puoi passare l'URL codificato in Base64 nel parametro `url` (o `d`). Il server lo decodificherà automaticamente.
+    ```
+    http://tuo-server:7860/extractor/video?url=aHR0cHM6Ly9leGFtcGxlLmNvbS92aWRlbw==
+    ```
+
+**Parametri:**
+- `url` (o `d`): **(Obbligatorio)** L'URL originale del video o della pagina. Supporta URL in chiaro, URL Encoded o **Base64 Encoded**.
+- `host`: (Opzionale) Forza l'uso di un estrattore specifico (es. `vavoo`, `dlhd`, `mixdrop`, `voe`, `streamtape`, `orion`).
+- `redirect_stream`: 
+  - `true`: Esegue un redirect immediato allo stream giocabile.
+  - `false` (default): Restituisce i dati in formato JSON.
+- `api_password`: (Opzionale) Password API se configurata.
+
+**Servizi Supportati:**
+Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe.
+
+**Esempio di Risposta (JSON):**
+```json
+{
+  "destination_url": "https://stream.example.com/video.m3u8",
+  "request_headers": {
+    "User-Agent": "Mozilla/5.0...",
+    "Referer": "https://example.com/"
+  },
+  "endpoint_type": "hls_proxy",
+  "proxy_url": "http://server:7860/proxy/manifest.m3u8?d=...",
+  "query_params": {}
+}
+```
+
+### 📺 Proxy Endpoints
+
+Questi endpoint gestiscono il proxying effettivo dei flussi video.
+
+- **`/proxy/manifest.m3u8`**: Endpoint principale per HLS. Gestisce anche la conversione automatica da DASH (MPD) a HLS.
+- **`/proxy/hls/manifest.m3u8`**: Alias specifico per HLS.
+- **`/proxy/mpd/manifest.m3u8`**: Forza il trattamento dell'input come DASH (MPD).
+- **`/proxy/stream`**: Proxy universale per file statici (MP4, MKV, AVI) o stream progressivi.
+
+**Parametri Comuni:**
+- `url` (o `d`): URL dello stream originale.
+- `h_<header>`: Headers personalizzati (es. `h_User-Agent=VLC`).
+- `clearkey`: Chiavi di decrittazione DRM in formato `KID:KEY` (per stream MPD protetti).
+
+### 🛠️ Utilities
+
+- **`/builder`**: Interfaccia Web per il Playlist Builder.
+- **`/playlist`**: Endpoint per processare intere playlist M3U remote.
+- **`/info`**: Pagina HTML con lo stato del server e le versioni dei componenti.
+- **`/api/info`**: API JSON che restituisce lo stato del server.
+- **`/proxy/ip`**: Restituisce l'indirizzo IP pubblico del server (utile per debug VPN/Proxy).
+- **`/generate_urls`** (POST): Genera URL proxy in batch (usato dal Builder).
+- **`/license`**: Endpoint per gestire richieste di licenza DRM (se necessario).
+
+---
+
 ## 🧰 Utilizzo del Proxy
 
 Sostituisci `<server-ip>` con l'IP del tuo server.

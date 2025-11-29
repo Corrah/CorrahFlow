@@ -19,7 +19,7 @@ class VoeExtractor:
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         self.session = None
-        self.mediaflow_endpoint = "hls_proxy"
+        self.endpoint_type = "hls_proxy"
         self.proxies = proxies or []
 
     def _get_random_proxy(self):
@@ -74,7 +74,7 @@ class VoeExtractor:
         return {
             "destination_url": final_url,
             "request_headers": self.base_headers,
-            "mediaflow_endpoint": "hls_proxy",
+            "endpoint_type": "hls_proxy",
         }
 
     @staticmethod
