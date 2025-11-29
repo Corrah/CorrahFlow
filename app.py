@@ -54,7 +54,7 @@ if DLHD_PROXIES: logging.info(f"📺 Caricati {len(DLHD_PROXIES)} proxy DLHD.")
 API_PASSWORD = os.environ.get("API_PASSWORD")
 
 # ✅ COSTANTE USER-AGENT: Forziamo Chrome per evitare blocchi 451/403 (da app ok.py)
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 def check_password(request):
     """Verifica la password API se impostata."""
@@ -186,7 +186,7 @@ class GenericHLSExtractor:
         # Combina logica di filtro header (da app.py) con logica base
         for h, v in self.request_headers.items():
             h_lower = h.lower()
-            if h_lower in ["authorization", "x-api-key", "x-auth-token", "referer", "cookie"]:
+            if h_lower in ["authorization", "x-api-key", "x-auth-token", "referer", "user-agent", "cookie"]:
                 headers[h] = v
             # Blocco esplicito di header che rivelano IP (da app.py)
             if h_lower in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
@@ -1081,9 +1081,7 @@ class HLSProxy:
             # Normalizzazione Header e Forzatura User-Agent Chrome
             normalized_headers = {}
             for k, v in headers.items():
-                if k.lower() == 'user-agent':
-                    normalized_headers['User-Agent'] = DEFAULT_USER_AGENT
-                elif k.lower() == 'referer':
+                if k.lower() == 'referer':
                     normalized_headers['Referer'] = v
                 elif k.lower() == 'origin':
                     normalized_headers['Origin'] = v
