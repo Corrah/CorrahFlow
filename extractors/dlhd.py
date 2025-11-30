@@ -30,7 +30,7 @@ class DLHDExtractor:
             "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
         }
         self.session = None
-        self.endpoint_type = "hls_manifest_proxy"
+        self.mediaflow_endpoint = "hls_manifest_proxy"
         self._cached_base_url = None
         self._iframe_context = None
         self._session_lock = asyncio.Lock()
@@ -485,7 +485,7 @@ class DLHDExtractor:
             return {
                 "destination_url": stream_url,
                 "request_headers": stream_headers,
-                "endpoint_type": self.endpoint_type,
+                "mediaflow_endpoint": self.mediaflow_endpoint,
             }
             
         except Exception as e:
@@ -584,7 +584,7 @@ class DLHDExtractor:
         return {
             "destination_url": stream_url,
             "request_headers": stream_headers,
-            "endpoint_type": self.endpoint_type,
+            "mediaflow_endpoint": self.mediaflow_endpoint,
         }
 
     async def invalidate_cache_for_url(self, url: str):
