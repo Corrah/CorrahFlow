@@ -844,19 +844,24 @@ class HLSProxy:
             if api_password:
                 header_params += f"&api_password={api_password}"
 
-            proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
+            # 1. URL COMPLETO (Solo per il redirect)
+            full_proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
 
             if redirect_stream:
-                logger.info(f"↪️ Redirecting to: {proxy_url}")
-                return web.HTTPFound(proxy_url)
+                logger.info(f"↪️ Redirecting to: {full_proxy_url}")
+                return web.HTTPFound(full_proxy_url)
 
-            # Formato risposta compatibile con MediaFlow-Proxy
+            # 2. URL PULITO (Per il JSON stile MediaFlow)
+            q_params = {}
+            if api_password:
+                q_params['api_password'] = api_password
+
             response_data = {
                 "destination_url": stream_url,
                 "request_headers": stream_headers,
                 "mediaflow_endpoint": mediaflow_endpoint,
-                "mediaflow_proxy_url": proxy_url,
-                "query_params": {}
+                "mediaflow_proxy_url": f"{proxy_base}{endpoint}",
+                "query_params": q_params
             }
             
             logger.info(f"✅ Extractor OK: {url} -> {stream_url[:50]}...")
