@@ -28,7 +28,7 @@ class VixSrcExtractor:
             "connection": "keep-alive",
         }
         self.session = None
-        self.endpoint_type = "hls_manifest_proxy"
+        self.mediaflow_endpoint = "hls_manifest_proxy"
         self._session_lock = asyncio.Lock()
         self.proxies = proxies or []
         self.is_vixsrc = True # Flag per identificare questo estrattore
@@ -199,7 +199,7 @@ class VixSrcExtractor:
                 return {
                     "destination_url": url,
                     "request_headers": self.base_headers,
-                    "endpoint_type": self.endpoint_type,
+                    "mediaflow_endpoint": self.mediaflow_endpoint,
                 }
 
             if "iframe" in url:
@@ -280,7 +280,7 @@ class VixSrcExtractor:
                 return {
                     "destination_url": final_url,
                     "request_headers": stream_headers,
-                    "endpoint_type": self.endpoint_type,
+                    "mediaflow_endpoint": self.mediaflow_endpoint,
                 }
                 
             except Exception as e:
