@@ -680,27 +680,32 @@ class HLSProxy:
                 
                 # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
                 if not redirect_stream:
-                    # Costruisci l'URL del proxy per questo stream
+                    # Costruisci l'URL base del proxy
                     scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
                     host = request.headers.get('X-Forwarded-Host', request.host)
                     proxy_base = f"{scheme}://{host}"
                     
-                    # Determina l'endpoint corretto in base al tipo di contenuto (semplificazione)
+                    mediaflow_endpoint = result.get("mediaflow_endpoint", "hls_proxy")
+                    
+                    # Determina l'endpoint corretto (Logic aggiornata come nell'extractor)
                     endpoint = "/proxy/hls/manifest.m3u8"
-                    if ".mpd" in stream_url:
+                    if mediaflow_endpoint == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
+                         endpoint = "/proxy/stream"
+                    elif ".mpd" in stream_url:
                         endpoint = "/proxy/mpd/manifest.m3u8"
                         
-                    encoded_url = urllib.parse.quote(stream_url, safe='')
-                    header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
-                    
-                    proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
+                    # Prepariamo i parametri per il JSON
+                    q_params = {}
+                    api_password = request.query.get('api_password')
+                    if api_password:
+                        q_params['api_password'] = api_password
                     
                     response_data = {
                         "destination_url": stream_url,
                         "request_headers": stream_headers,
-                        "mediaflow_endpoint": result.get("mediaflow_endpoint", "hls_proxy"),
-                        "mediaflow_proxy_url": proxy_url,
-                        "query_params": {}
+                        "mediaflow_endpoint": mediaflow_endpoint,
+                        "mediaflow_proxy_url": f"{proxy_base}{endpoint}", # URL Pulito
+                        "query_params": q_params
                     }
                     return web.json_response(response_data)
 
