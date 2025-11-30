@@ -18,7 +18,7 @@ class MixdropExtractor:
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         self.session = None
-        self.endpoint_type = "proxy_stream_endpoint"
+        self.mediaflow_endpoint = "proxy_stream_endpoint"
         self.proxies = proxies or []
 
     def _get_random_proxy(self):
@@ -76,7 +76,7 @@ class MixdropExtractor:
             return {
                 "destination_url": final_url,
                 "request_headers": self.base_headers,
-                "endpoint_type": self.endpoint_type,
+                "mediaflow_endpoint": self.mediaflow_endpoint,
             }
         except Exception as e:
             error_message = str(e)
