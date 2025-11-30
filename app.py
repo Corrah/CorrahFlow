@@ -811,6 +811,7 @@ class HLSProxy:
                 # Non è Base64 o non è un URL valido, proseguiamo con l'originale
                 pass
                 
+            host_param = request.query.get('host')
             redirect_stream = request.query.get('redirect_stream', 'false').lower() == 'true'
             logger.info(f"🔍 Extracting: {url} (Host: {host_param}, Redirect: {redirect_stream})")
 
