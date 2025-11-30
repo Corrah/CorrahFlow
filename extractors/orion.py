@@ -39,5 +39,5 @@ class OrionExtractor:
         return {
             "destination_url": url,
             "request_headers": headers,
-            "endpoint_type": "hls_proxy" 
+            "mediaflow_endpoint": "hls_proxy" 
         }
