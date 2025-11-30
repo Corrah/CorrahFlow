@@ -181,6 +181,14 @@ Le variabili supportate sono:
 - `GLOBAL_PROXY`: Proxy di fallback per tutte le richieste.
 - `VAVOO_PROXY`: Proxy specifico per le richieste a Vavoo.
 - `DLHD_PROXY`: Proxy specifico per le richieste a DaddyLiveHD.
+- `PORT`: Porta su cui il server ascolta (default: 7860).
+
+**Esempio per cambiare la porta:**
+
+```env
+# Cambia la porta del server (default: 7860)
+PORT=8080
+```
 
 ---
 
