@@ -59,7 +59,7 @@ class SportsonlineExtractor:
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         }
         self.session = None
-        self.endpoint_type = "hls_manifest_proxy"
+        self.mediaflow_endpoint = "hls_manifest_proxy"
         self._session_lock = asyncio.Lock()
         self.proxies = proxies or []
 
@@ -189,7 +189,7 @@ class SportsonlineExtractor:
                     return {
                         "destination_url": m3u8_url,
                         "request_headers": {'Referer': iframe_url, 'User-Agent': iframe_headers['User-Agent']},
-                        "endpoint_type": self.endpoint_type,
+                        "mediaflow_endpoint": self.mediaflow_endpoint,
                     }
                 raise ExtractorError("No packed blocks or direct m3u8 URL found")
 
@@ -233,7 +233,7 @@ class SportsonlineExtractor:
             return {
                 "destination_url": m3u8_url,
                 "request_headers": {'Referer': iframe_url, 'User-Agent': iframe_headers['User-Agent']},
-                "endpoint_type": self.endpoint_type,
+                "mediaflow_endpoint": self.mediaflow_endpoint,
             }
         except Exception as e:
             logger.exception(f"Sportsonline extraction failed for {url}")
