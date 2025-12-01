@@ -15,11 +15,6 @@ WORKDIR /app
 # CLONA il repository. Questo comando scarica TUTTI i file, incluso requirements.txt.
 RUN git clone https://github.com/nzo66/easyproxy . 
 
-# Verifica che i file siano presenti.
-RUN ls -la
-
-
-
 # Installa le dipendenze.
 RUN pip install --no-cache-dir -r requirements.txt
 
