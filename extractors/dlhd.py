@@ -239,7 +239,7 @@ class DLHDExtractor:
             if self._cached_base_url and not force_refresh:
                 return self._cached_base_url
             
-            DOMAINS = ['https://daddylive.sx/', 'https://dlhd.dad/']
+            DOMAINS = ['https://dlhd.stremio.dpdns.org/']
             for base in DOMAINS:
                 try:
                     resp = await self._make_robust_request(base, retries=1)
@@ -278,6 +278,19 @@ class DLHDExtractor:
                 'Origin': daddy_origin
             }
             
+            # ✅ Helper per riscrivere URL verso il worker
+            def rewrite_url_to_worker(url_to_rewrite: str) -> str:
+                """Riscrivi URL di domini bloccati (daddyhd.com, dlhd.dad, daddylive.sx) verso il worker"""
+                blocked_domains = ['daddyhd.com', 'dlhd.dad', 'daddylive.sx', 'daddylive.me']
+                parsed = urlparse(url_to_rewrite)
+                if any(domain in parsed.netloc for domain in blocked_domains):
+                    new_url = baseurl.rstrip('/') + parsed.path
+                    if parsed.query:
+                        new_url += '?' + parsed.query
+                    logger.info(f"🔄 Riscritto URL player: {url_to_rewrite} -> {new_url}")
+                    return new_url
+                return url_to_rewrite
+            
             # 1. Richiesta pagina iniziale per trovare i link dei player
             resp1 = await self._make_robust_request(initial_url, headers=daddylive_headers)
             content1 = await resp1.text()
@@ -292,6 +305,9 @@ class DLHDExtractor:
                 try:
                     if not player_url.startswith('http'):
                         player_url = urljoin(baseurl, player_url)
+                    
+                    # ✅ Riscrivi URL verso il worker se punta a domini bloccati
+                    player_url = rewrite_url_to_worker(player_url)
             
                     daddylive_headers['Referer'] = player_url
                     resp2 = await self._make_robust_request(player_url, headers=daddylive_headers)
@@ -383,18 +399,7 @@ class DLHDExtractor:
                     self._save_cache()
                     logger.info(f"🗑️ Cache invalidata per il canale ID {channel_id}.")
                 else:
-                    # ✅ NUOVO: Esegui una richiesta di "keep-alive" per mantenere la sessione attiva
-                    # Questo utilizza il proxy se configurato, come richiesto.
-                    try:
-                        logger.info(f"🔄 Eseguo una richiesta di keep-alive per il canale {channel_id} per mantenere la sessione attiva tramite proxy.")
-                        baseurl = await resolve_base_url()
-                        # Eseguiamo una richiesta leggera alla pagina del canale per aggiornare i cookie di sessione.
-                        # Questo assicura che il proxy venga utilizzato.
-                        await self._make_robust_request(url, retries=1)
-                        logger.info(f"✅ Sessione per il canale {channel_id} rinfrescata con successo.")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Fallita la richiesta di keep-alive per il canale {channel_id}: {e}. Lo stream potrebbe non funzionare.")
-                    
+                    logger.info(f"✅ Cache valida per {channel_id}. Utilizzo dati in cache senza ulteriori richieste.")
                     return cached_data
 
             # ✅ NUOVO: Usa un lock per prevenire estrazioni simultanee per lo stesso canale
@@ -411,7 +416,16 @@ class DLHDExtractor:
                 # Procedi con l'estrazione
                 logger.info(f"⚙️ Nessuna cache valida per {channel_id}, avvio estrazione completa...")
                 baseurl = await resolve_base_url()
-                return await get_stream_data(baseurl, url, channel_id)
+                
+                # ✅ IMPORTANTE: Riscrivi l'URL usando il dominio base del worker
+                # Questo evita di fare richieste a dlhd.dad che viene bloccato
+                parsed_original = urlparse(url)
+                rewritten_url = baseurl.rstrip('/') + parsed_original.path
+                if parsed_original.query:
+                    rewritten_url += '?' + parsed_original.query
+                logger.info(f"🔄 URL riscritto: {url} -> {rewritten_url}")
+                
+                return await get_stream_data(baseurl, rewritten_url, channel_id)
             
         except Exception as e:
             # Per errori 403, non loggare il traceback perché sono errori attesi (servizio temporaneamente non disponibile)
