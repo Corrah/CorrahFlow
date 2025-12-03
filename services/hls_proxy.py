@@ -122,7 +122,7 @@ class HLSProxy:
                         self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
                     return self.extractors[key]
                 
-                elif host in ["dlhd", "daddylive"]:
+                elif host in ["dlhd", "daddylive", "daddyhd"]:
                     key = "dlhd"
                     proxies = DLHD_PROXIES or GLOBAL_PROXIES
                     if key not in self.extractors:
@@ -167,7 +167,7 @@ class HLSProxy:
                 if key not in self.extractors:
                     self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
                 return self.extractors[key]
-            elif any(domain in url for domain in ["daddylive", "dlhd"]) or re.search(r'stream-\d+\.php', url):
+            elif any(domain in url for domain in ["daddylive", "dlhd", "daddyhd"]) or re.search(r'watch\.php\?id=\d+', url):
                 key = "dlhd"
                 proxies = DLHD_PROXIES or GLOBAL_PROXIES
                 if key not in self.extractors:
