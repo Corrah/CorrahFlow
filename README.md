@@ -175,6 +175,9 @@ DLHD_PROXY=socks5://proxy1.com:1080,socks5://proxy2.com:1080
 
 # Proxy specifico per Vavoo
 VAVOO_PROXY=socks5://vavoo-proxy.net:9050
+
+# Password per proteggere le API
+API_PASSWORD=mysecretpassword
 ```
 
 Le variabili supportate sono:
@@ -182,6 +185,7 @@ Le variabili supportate sono:
 - `VAVOO_PROXY`: Proxy specifico per le richieste a Vavoo.
 - `DLHD_PROXY`: Proxy specifico per le richieste a DaddyLiveHD.
 - `PORT`: Porta su cui il server ascolta (default: 7860).
+- `API_PASSWORD`: Password per proteggere l'accesso alle API.
 
 **Esempio per cambiare la porta:**
 
