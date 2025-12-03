@@ -235,26 +235,10 @@ class DLHDExtractor:
     async def extract(self, url: str, force_refresh: bool = False, **kwargs) -> Dict[str, Any]:
         """Flusso di estrazione principale: risolve il dominio base, trova i player, estrae l'iframe, i parametri di autenticazione e l'URL m3u8 finale."""
         async def resolve_base_url(preferred_host: Optional[str] = None) -> str:
-            """Risolve l'URL di base attivo provando una lista di domini noti."""
-            if self._cached_base_url and not force_refresh:
-                return self._cached_base_url
-            
-            DOMAINS = ['https://dlhd.stremio.dpdns.org/']
-            for base in DOMAINS:
-                try:
-                    resp = await self._make_robust_request(base, retries=1)
-                    final_url = str(resp.url)
-                    if not final_url.endswith('/'): final_url += '/' # Assicura lo slash finale
-                    self._cached_base_url = final_url
-                    logger.info(f"✅ Dominio base risolto: {final_url}")
-                    return final_url
-                except Exception as e:
-                    logger.warning(f"⚠️ Tentativo fallito per il dominio base {base}: {e}")
-            
-            fallback = DOMAINS[0]
-            logger.warning(f"Tutti i tentativi di risoluzione del dominio sono falliti, uso il fallback: {fallback}")
-            self._cached_base_url = fallback
-            return fallback
+            """Ritorna il dominio base senza fare richieste preliminari per evitare 429."""
+            # Evitiamo richieste al dominio base che potrebbero scatenare rate limiting (429)
+            # I player gestiranno eventuali redirect
+            return 'https://proxy.dlhd.dpdns.org/'
 
         def extract_channel_id(u: str) -> Optional[str]:
             patterns = [
@@ -270,7 +254,7 @@ class DLHDExtractor:
                     return match.group(1)
             return None
 
-        async def get_stream_data(baseurl: str, initial_url: str, channel_id: str):
+        async def get_stream_data(baseurl: str, channel_id: str):
             daddy_origin = urlparse(baseurl).scheme + "://" + urlparse(baseurl).netloc
             daddylive_headers = {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
@@ -278,91 +262,68 @@ class DLHDExtractor:
                 'Origin': daddy_origin
             }
             
-            # ✅ Helper per riscrivere URL verso il worker
-            def rewrite_url_to_worker(url_to_rewrite: str) -> str:
-                """Riscrivi URL di domini bloccati (daddyhd.com, dlhd.dad, daddylive.sx) verso il worker"""
-                blocked_domains = ['daddyhd.com', 'dlhd.dad', 'daddylive.sx', 'daddylive.me']
-                parsed = urlparse(url_to_rewrite)
-                if any(domain in parsed.netloc for domain in blocked_domains):
-                    new_url = baseurl.rstrip('/') + parsed.path
-                    if parsed.query:
-                        new_url += '?' + parsed.query
-                    logger.info(f"🔄 Riscritto URL player: {url_to_rewrite} -> {new_url}")
-                    return new_url
-                return url_to_rewrite
+            # List of players to try directly
+            players = ['stream', 'cast', 'watch', 'plus', 'casting', 'player']
             
-            # 1. Richiesta pagina iniziale per trovare i link dei player
-            resp1 = await self._make_robust_request(initial_url, headers=daddylive_headers)
-            content1 = await resp1.text()
-            player_links = re.findall(r'<button[^>]*data-url="([^"]+)"[^>]*>Player\s*\d+</button>', content1)
-            if not player_links:
-                raise ExtractorError("Nessun link player trovato nella pagina.")
+            last_error = None
             
-            last_player_error = None
-            iframe_candidates = []
-            
-            for player_url in player_links:
+            for player in players:
+                # Construct player URL directly: {baseurl}/{player}/stream-{channel_id}.php
+                base = baseurl.rstrip('/')
+                player_url = f"{base}/{player}/stream-{channel_id}.php"
+                
+                logger.info(f"Trying direct player URL: {player_url}")
+                
                 try:
-                    if not player_url.startswith('http'):
-                        player_url = urljoin(baseurl, player_url)
-                    
-                    # ✅ Riscrivi URL verso il worker se punta a domini bloccati
-                    player_url = rewrite_url_to_worker(player_url)
-            
                     daddylive_headers['Referer'] = player_url
-                    resp2 = await self._make_robust_request(player_url, headers=daddylive_headers)
-                    content2 = await resp2.text()
-                    iframes2 = re.findall(r'<iframe.*?src="([^"]*)"', content2)
-            
-                    for iframe in iframes2:
-                        full_iframe_url = urljoin(player_url, iframe)
-                        if full_iframe_url not in iframe_candidates:
-                            iframe_candidates.append(full_iframe_url)
-                            logger.info(f"Found iframe candidate: {full_iframe_url}")
-            
-                except Exception as e:
-                    last_player_error = e
-                    logger.warning(f"Fallito il processamento del link player {player_url}: {e}")
-                    continue
-            
-            if not iframe_candidates:
-                if last_player_error:
-                    raise ExtractorError(f"Tutti i link dei player sono falliti. Ultimo errore: {last_player_error}")
-                raise ExtractorError("Nessun iframe valido trovato in nessuna pagina player")
-            
-            last_iframe_error = None
-            for iframe_candidate in iframe_candidates:
-                try:
-                    logger.info(f"Trying iframe: {iframe_candidate}")
-                    iframe_domain = urlparse(iframe_candidate).netloc
-                    if not iframe_domain:
-                        logger.warning(f"Invalid iframe URL format: {iframe_candidate}")
+                    resp = await self._make_robust_request(player_url, headers=daddylive_headers)
+                    content = await resp.text()
+                    
+                    iframes = re.findall(r'<iframe.*?src="([^"]*)"', content)
+                    
+                    if not iframes:
+                        logger.warning(f"No iframe found in {player_url}")
                         continue
+                        
+                    # Try each iframe found (usually just one)
+                    for iframe_src in iframes:
+                        try:
+                            if not iframe_src.startswith('http'):
+                                iframe_src = urljoin(player_url, iframe_src)
+                                
+                            logger.info(f"Found iframe candidate: {iframe_src}")
+                            
+                            self._iframe_context = iframe_src
+                            resp_iframe = await self._make_robust_request(iframe_src, headers=daddylive_headers)
+                            iframe_content = await resp_iframe.text()
+                            iframe_domain = urlparse(iframe_src).netloc
+                            
+                            logger.info(f"Successfully loaded iframe from: {iframe_domain}")
             
-                    self._iframe_context = iframe_candidate
-                    resp3 = await self._make_robust_request(iframe_candidate, headers=daddylive_headers)
-                    iframe_content = await resp3.text()
-                    logger.info(f"Successfully loaded iframe from: {iframe_domain}")
-            
-                    if 'lovecdn.ru' in iframe_domain:
-                        logger.info("Detected lovecdn.ru iframe - using alternative extraction")
-                        result = await self._extract_lovecdn_stream(iframe_candidate, iframe_content, daddylive_headers)
-                        self._stream_data_cache[channel_id] = result
-                        self._save_cache()
-                        return result
-                    else:
-                        logger.info("Attempting new auth flow extraction.")
-                        result = await self._extract_new_auth_flow(iframe_candidate, iframe_content, daddylive_headers)
-                        self._stream_data_cache[channel_id] = result
-                        self._save_cache()
-                        return result
-            
+                            if 'lovecdn.ru' in iframe_domain:
+                                logger.info("Detected lovecdn.ru iframe - using alternative extraction")
+                                result = await self._extract_lovecdn_stream(iframe_src, iframe_content, daddylive_headers)
+                                self._stream_data_cache[channel_id] = result
+                                self._save_cache()
+                                return result
+                            else:
+                                logger.info("Attempting new auth flow extraction.")
+                                result = await self._extract_new_auth_flow(iframe_src, iframe_content, daddylive_headers)
+                                self._stream_data_cache[channel_id] = result
+                                self._save_cache()
+                                return result
+                                
+                        except Exception as e:
+                            logger.warning(f"Failed to process iframe {iframe_src}: {e}")
+                            last_error = e
+                            continue
+                            
                 except Exception as e:
-                    logger.warning(f"Failed to process iframe {iframe_candidate}: {e}")
-                    last_iframe_error = e
+                    logger.warning(f"Failed to process player URL {player_url}: {e}")
+                    last_error = e
                     continue
             
-            raise ExtractorError(f"All iframe candidates failed. Last error: {last_iframe_error}")
+            raise ExtractorError(f"All players failed. Last error: {last_error}")
 
         try:
             channel_id = extract_channel_id(url)
@@ -417,15 +378,7 @@ class DLHDExtractor:
                 logger.info(f"⚙️ Nessuna cache valida per {channel_id}, avvio estrazione completa...")
                 baseurl = await resolve_base_url()
                 
-                # ✅ IMPORTANTE: Riscrivi l'URL usando il dominio base del worker
-                # Questo evita di fare richieste a dlhd.dad che viene bloccato
-                parsed_original = urlparse(url)
-                rewritten_url = baseurl.rstrip('/') + parsed_original.path
-                if parsed_original.query:
-                    rewritten_url += '?' + parsed_original.query
-                logger.info(f"🔄 URL riscritto: {url} -> {rewritten_url}")
-                
-                return await get_stream_data(baseurl, rewritten_url, channel_id)
+                return await get_stream_data(baseurl, channel_id)
             
         except Exception as e:
             # Per errori 403, non loggare il traceback perché sono errori attesi (servizio temporaneamente non disponibile)
