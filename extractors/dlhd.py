@@ -40,7 +40,6 @@ class DLHDExtractor:
         # ✅ Lista host iframe (configurabile dinamicamente in futuro da Gist/JSON esterno)
         self.iframe_hosts = [
             'epicplayplay.cfd',
-            'dokoplay.xyz',
         ]
 
     def _load_cache(self) -> Dict[str, Dict[str, Any]]:
