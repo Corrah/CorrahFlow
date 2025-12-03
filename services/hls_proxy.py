@@ -122,7 +122,7 @@ class HLSProxy:
                         self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
                     return self.extractors[key]
                 
-                elif host in ["dlhd", "daddylive", "daddyhd"]:
+                elif host in ["dlhd", "daddylive", "daddyhd", "newkso", "giokko"]:
                     key = "dlhd"
                     proxies = DLHD_PROXIES or GLOBAL_PROXIES
                     if key not in self.extractors:
