@@ -245,21 +245,7 @@ Devi aggiungere `?url=` (o `?d=`) seguito dal link del video che vuoi processare
 - `api_password`: (Opzionale) Password API se configurata.
 
 **Servizi Supportati:**
-Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe.
-
-**Esempio di Risposta (JSON):**
-```json
-{
-  "destination_url": "https://stream.example.com/video.m3u8",
-  "request_headers": {
-    "User-Agent": "Mozilla/5.0...",
-    "Referer": "https://example.com/"
-  },
-  "endpoint_type": "hls_proxy",
-  "proxy_url": "http://server:7860/proxy/manifest.m3u8?d=...",
-  "query_params": {}
-}
-```
+Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe e molto altro!
 
 ### 📺 Proxy Endpoints
 
