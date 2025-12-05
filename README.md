@@ -97,6 +97,13 @@ railway login && railway init && railway up
 heroku create EasyProxy && git push heroku main
 ```
 
+### 🚀 Koyeb
+1. Crea una nuova **App** su Koyeb.
+2. Seleziona **GitHub** come fonte e inserisci l'URL del repository: `https://github.com/nzo66/EasyProxy`
+3. Vai nelle **Settings** -> **Environment variables**.
+4. Aggiungi la variabile `PORT` con valore `8000` (richiesto da Koyeb).
+5. Deploy!
+
 ### 🎯 Configurazione Cloud Ottimale
 
 **Il proxy funziona senza configurazione!**
