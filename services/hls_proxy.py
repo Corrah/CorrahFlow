@@ -22,11 +22,17 @@ from services.manifest_rewriter import ManifestRewriter
 
 # --- Moduli Esterni ---
 VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
-MixdropExtractor, VoeExtractor, StreamtapeExtractor, OrionExtractor = None, None, None, None
+MixdropExtractor, VoeExtractor, StreamtapeExtractor, OrionExtractor, FreeshotExtractor = None, None, None, None, None
 
 logger = logging.getLogger(__name__)
 
 # Importazione condizionale degli estrattori
+try:
+    from extractors.freeshot import FreeshotExtractor
+    logger.info("✅ Modulo FreeshotExtractor caricato.")
+except ImportError:
+    logger.warning("⚠️ Modulo FreeshotExtractor non trovato.")
+
 try:
     from extractors.vavoo import VavooExtractor
     logger.info("✅ Modulo VavooExtractor caricato.")
@@ -159,6 +165,11 @@ class HLSProxy:
                     if key not in self.extractors:
                         self.extractors[key] = OrionExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
+                
+                elif host == "freeshot":
+                    if key not in self.extractors:
+                        self.extractors[key] = FreeshotExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    return self.extractors[key]
 
             # 2. Auto-detection basata sull'URL 
             if "vavoo.to" in url:
@@ -193,6 +204,11 @@ class HLSProxy:
                 key = "voe"
                 if key not in self.extractors:
                     self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                return self.extractors[key]
+            elif "popcdn.day" in url:
+                key = "freeshot"
+                if key not in self.extractors:
+                    self.extractors[key] = FreeshotExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
             elif "streamtape.com" in url or "streamtape.to" in url or "streamtape.net" in url:
                 key = "streamtape"
@@ -236,20 +252,13 @@ class HLSProxy:
                 
             # Log removed for cleaner output
             
-            # DEBUG LOGGING
-            print(f"🔍 [DEBUG] Processing URL: {target_url}")
-            print(f"   Headers: {dict(request.headers)}")
-            
             extractor = await self.get_extractor(target_url, dict(request.headers))
-            print(f"   Extractor: {type(extractor).__name__}")
             
             try:
                 # Passa il flag force_refresh all'estrattore
                 result = await extractor.extract(target_url, force_refresh=force_refresh)
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
-                print(f"   Resolved Stream URL: {stream_url}")
-                print(f"   Stream Headers: {stream_headers}")
                 
                 # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
                 if not redirect_stream:
@@ -763,7 +772,6 @@ class HLSProxy:
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(stream_url, headers=headers, **connector_kwargs, ssl=False) as resp:
                     content_type = resp.headers.get('content-type', '')
-                    print(f"   Upstream Response: {resp.status} [{content_type}]")
                     
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
