@@ -212,6 +212,10 @@ class ManifestRewriter:
         if api_password:
             header_params += f"&api_password={api_password}"
 
+        # Estrai query params dal base_url per ereditarli se necessario (es. token)
+        base_parsed = urllib.parse.urlparse(base_url)
+        base_query = base_parsed.query
+
         for line in lines:
             line = line.strip()
             
@@ -279,11 +283,39 @@ class ManifestRewriter:
                 else:
                     rewritten_lines.append(line)
 
+            # ✅ NUOVO: Gestione per EXT-X-MAP (fMP4 initialization segment)
+            elif line.startswith('#EXT-X-MAP:') and 'URI=' in line:
+                uri_start = line.find('URI="') + 5
+                uri_end = line.find('"', uri_start)
+                
+                if uri_start > 4 and uri_end > uri_start:
+                    original_map_url = line[uri_start:uri_end]
+                    absolute_map_url = urljoin(base_url, original_map_url)
+                    
+                    if is_dlhd_stream:
+                         new_line = line[:uri_start] + absolute_map_url + line[uri_end:]
+                         rewritten_lines.append(new_line)
+                         logger.info(f"🔄 DLHD: MAP diretto: {absolute_map_url}")
+                    else:
+                        encoded_map_url = urllib.parse.quote(absolute_map_url, safe='')
+                        # Usa l'endpoint segment.mp4 che è gestito da handle_proxy_request
+                        proxy_map_url = f"{proxy_base}/proxy/hls/segment.mp4?d={encoded_map_url}{header_params}"
+                        
+                        new_line = line[:uri_start] + proxy_map_url + line[uri_end:]
+                        rewritten_lines.append(new_line)
+                        logger.info(f"🔄 Redirected MAP URL: {absolute_map_url} -> {proxy_map_url}")
+                else:
+                    rewritten_lines.append(line)
+
             # Gestione segmenti video e sub-manifest, sia relativi che assoluti
             elif line and not line.startswith('#'):
                 # ✅ CORREZIONE: Riscrive qualsiasi URL relativo o assoluto che non sia un tag.
                 # Distingue tra manifest (.m3u8, .css) e segmenti (.ts, .html, etc.).
                 absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
+
+                # ✅ NUOVO: Eredita i query params (es. token) dal base_url se non presenti nel segmento
+                if base_query and '?' not in absolute_url:
+                    absolute_url += f"?{base_query}"
 
                 if is_dlhd_stream:
                     # Per DLHD, non proxare i segmenti, usa l'URL assoluto diretto
@@ -297,7 +329,15 @@ class ManifestRewriter:
                     # ✅ RIPRISTINO LOGICA ORIGINALE (SEMPLIFICATA)
                     # Usiamo l'endpoint standard di EasyProxy per tutto, garantendo la massima compatibilità
                     # con la logica che "già funzionava".
-                    proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    
+                    # Se è un manifest (.m3u8), usa l'endpoint manifest.
+                    # Altrimenti, assumiamo sia un segmento (fMP4, TS, etc.) e usiamo l'endpoint segment.
+                    if '.m3u8' in absolute_url:
+                         proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
+                    else:
+                         # Segmento (o altro file binario)
+                         proxy_url = f"{proxy_base}/proxy/hls/segment.mp4?d={encoded_url}{header_params}"
+                    
                     rewritten_lines.append(proxy_url)
 
             else:
