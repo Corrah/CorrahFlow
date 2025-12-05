@@ -100,9 +100,11 @@ heroku create EasyProxy && git push heroku main
 ### 🚀 Koyeb
 1. Crea una nuova **Web Service** su Koyeb.
 2. Seleziona **GitHub** come fonte e inserisci l'URL del repository: `https://github.com/nzo66/EasyProxy`
-3. Vai nelle **Settings** -> **Environment variables**.
-4. Aggiungi la variabile `PORT` con valore `8000` (richiesto da Koyeb).
-5. Deploy!
+3. Seleziona Dockerfile
+4. Seleziona CPU Eco - Free
+5. Vai in **Environment variables**.
+6. Aggiungi la variabile `PORT` con valore `8000` (richiesto da Koyeb).
+7. Deploy!
 
 ### 🎯 Configurazione Cloud Ottimale
 
