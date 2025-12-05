@@ -236,6 +236,7 @@ class HLSProxy:
             logger.warning(f"⛔ Accesso negato: Password API non valida o mancante. IP: {request.remote}")
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
+        
         extractor = None
         try:
             target_url = request.query.get('url') or request.query.get('d')
@@ -249,16 +250,22 @@ class HLSProxy:
                 target_url = urllib.parse.unquote(target_url)
             except:
                 pass
-                
-            # Log removed for cleaner output
+            # DEBUG LOGGING    
+            print(f"🔍 [DEBUG] Processing URL: {target_url}")
+            print(f"   Headers: {dict(request.headers)}")
             
             extractor = await self.get_extractor(target_url, dict(request.headers))
+            
+            print(f"   Extractor: {type(extractor).__name__}")
             
             try:
                 # Passa il flag force_refresh all'estrattore
                 result = await extractor.extract(target_url, force_refresh=force_refresh)
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
+
+                print(f"   Resolved Stream URL: {stream_url}")
+                print(f"   Stream Headers: {stream_headers}")
                 
                 # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
                 if not redirect_stream:
@@ -773,6 +780,8 @@ class HLSProxy:
                 async with session.get(stream_url, headers=headers, **connector_kwargs, ssl=False) as resp:
                     content_type = resp.headers.get('content-type', '')
                     
+                    print(f"   Upstream Response: {resp.status} [{content_type}]")
+                    
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
                     if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and 'newkso.ru' in stream_url):
@@ -1255,3 +1264,4 @@ class HLSProxy:
                     await extractor.close()
         except Exception as e:
             logger.error(f"Errore durante cleanup: {e}")
+
