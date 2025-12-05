@@ -6,6 +6,7 @@
 
 > **Un server proxy universale per streaming HLS, M3U8 e IPTV** 🎬  
 > Supporto nativo per Vavoo, DaddyLive HD e tutti i servizi di streaming  
+> Compatibile con MediaFlow Proxy per addons Stremio  
 > Interfaccia web integrata e configurazione zero
 
 ---
@@ -83,6 +84,8 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 2. Carica tutti i file
 3. Deploy automatico
 4. **Pronto!**
+
+**Alternativa:** Come alternativa, puoi copiare il contenuto del file `Dockerfile-hf` e metterlo su HuggingFace, impostando `api_password` come secret.
 
 ### 🌐 Railway / Heroku
 
