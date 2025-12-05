@@ -6,7 +6,7 @@ services:
     ports:
       - '${PORT:-7860}:${PORT:-7860}' #modifica la variabile "PORT" per cambiare la porta
     environment:
-      - API_PASSWORD=ep
+      - API_PASSWORD=ep      #qui inserisci la tua password personalizzata
       - PORT=7860
       # VARIABILI OPZIONALI
       #- GLOBAL_PROXY=
