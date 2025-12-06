@@ -184,12 +184,12 @@ GLOBAL_PROXY=http://user:pass@myproxy.com:8080
 
 # --- Regole di Trasporto (TRANSPORT_ROUTES) ---
 # Sistema avanzato per routing proxy basato su URL patterns.
-# Formato: {URL=pattern, PROXY=proxy_url}, {URL=pattern2, PROXY=proxy_url2}
+# Formato: {URL=pattern, PROXY=proxy_url, DISABLE_SSL=true}, {URL=pattern2, PROXY=proxy_url2, DISABLE_SSL=true}
 # - URL: pattern da cercare nell'URL (es. vavoo.to, dlhd.dad, giokko.ru)
 # - PROXY: proxy da usare (lascia vuoto per connessione diretta)
-# Esempi:
+# - DISABLE_SSL: per disattivare la verifica ssl
 
-TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080}, {URL=dlhd.dad, PROXY=http://proxy2:8080}
+TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080, DISABLE_SSL=true}, {URL=dlhd.dad, PROXY=http://proxy2:8080, DISABLE_SSL=true}
 
 # Password per proteggere le API
 API_PASSWORD=mysecretpassword
