@@ -304,19 +304,26 @@ class HLSProxy:
                     return web.json_response(response_data)
 
                 # Aggiungi headers personalizzati da query params
+                h_params_found = []
                 for param_name, param_value in request.query.items():
                     if param_name.startswith('h_'):
                         header_name = param_name[2:]
+                        h_params_found.append(header_name)
                         
                         # ✅ FIX: Rimuovi eventuali header duplicati (case-insensitive) presenti in stream_headers
                         # Questo assicura che l'header passato via query param (es. h_Referer) abbia la priorità
                         # e non vada in conflitto con quelli generati dagli estrattori (es. referer minuscolo).
-                        for k in list(stream_headers.keys()):
-                            if k.lower() == header_name.lower():
-                                del stream_headers[k]
+                        keys_to_remove = [k for k in stream_headers.keys() if k.lower() == header_name.lower()]
+                        for k in keys_to_remove:
+                            del stream_headers[k]
                         
                         stream_headers[header_name] = param_value
                 
+                if h_params_found:
+                    logger.debug(f"   Headers overridden by query params: {h_params_found}")
+                else:
+                    logger.debug("   No h_ params found in query string.")
+                    
                 # Stream URL resolved
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
