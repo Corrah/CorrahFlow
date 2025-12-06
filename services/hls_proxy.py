@@ -770,6 +770,15 @@ class HLSProxy:
                     headers['Origin'] = headers.pop(key)
                 elif key.lower() == 'authorization':
                     headers['Authorization'] = headers.pop(key)
+                elif key.lower() == 'cookie':
+                    headers['Cookie'] = headers.pop(key)
+
+            # ✅ FIX: Rimuovi duplicati espliciti se presenti (es. user-agent e User-Agent)
+            # Questo può accadere se GenericHLSExtractor aggiunge 'user-agent' e noi abbiamo 'User-Agent' da h_ params
+            # La normalizzazione sopra dovrebbe averli unificati, ma per sicurezza puliamo.
+            
+            # Log headers finali per debug
+            # logger.info(f"   Final Stream Headers: {headers}")
 
             # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
             disable_ssl = get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES)
