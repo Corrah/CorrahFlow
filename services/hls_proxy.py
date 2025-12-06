@@ -14,7 +14,7 @@ import aiohttp
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
 from aiohttp_proxy import ProxyConnector
 
-from config import GLOBAL_PROXIES, VAVOO_PROXIES, DLHD_PROXIES, API_PASSWORD, check_password
+from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, API_PASSWORD, check_password
 from extractors.generic import GenericHLSExtractor, ExtractorError
 from utils.mpd_converter import MPDToHLSConverter
 from utils.drm_decrypter import decrypt_segment
@@ -117,108 +117,113 @@ class HLSProxy:
     async def get_extractor(self, url: str, request_headers: dict, host: str = None):
         """Ottiene l'estrattore appropriato per l'URL"""
         try:
-             # 1. Selezione Manuale tramite parametro 'host'
+            # 1. Selezione Manuale tramite parametro 'host'
             if host:
                 host = host.lower()
                 key = host
-                
+
                 if host == "vavoo":
-                    proxies = VAVOO_PROXIES or GLOBAL_PROXIES
                     if key not in self.extractors:
-                        self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
+                        self.extractors[key] = VavooExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host in ["dlhd", "daddylive", "daddyhd"]:
                     key = "dlhd"
-                    proxies = DLHD_PROXIES or GLOBAL_PROXIES
                     if key not in self.extractors:
-                        self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
+                        self.extractors[key] = DLHDExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "vixsrc":
                     if key not in self.extractors:
                         self.extractors[key] = VixSrcExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host in ["sportsonline", "sportzonline"]:
                     key = "sportsonline"
                     if key not in self.extractors:
                         self.extractors[key] = SportsonlineExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "mixdrop":
                     if key not in self.extractors:
                         self.extractors[key] = MixdropExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "voe":
                     if key not in self.extractors:
                         self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "streamtape":
                     if key not in self.extractors:
                         self.extractors[key] = StreamtapeExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "orion":
                     if key not in self.extractors:
                         self.extractors[key] = OrionExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
-                
                 elif host == "freeshot":
                     if key not in self.extractors:
                         self.extractors[key] = FreeshotExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
 
-            # 2. Auto-detection basata sull'URL 
+            # 2. Auto-detection basata sull'URL
             if "vavoo.to" in url:
                 key = "vavoo"
-                proxies = VAVOO_PROXIES or GLOBAL_PROXIES
+                proxy = get_proxy_for_url('vavoo.to', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = VavooExtractor(request_headers, proxies=proxies)
+                    self.extractors[key] = VavooExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif any(domain in url for domain in ["daddylive", "dlhd", "daddyhd"]) or re.search(r'watch\.php\?id=\d+', url):
                 key = "dlhd"
-                proxies = DLHD_PROXIES or GLOBAL_PROXIES
+                proxy = get_proxy_for_url('dlhd.dad', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = DLHDExtractor(request_headers, proxies=proxies)
+                    self.extractors[key] = DLHDExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif 'vixsrc.to/' in url.lower() and any(x in url for x in ['/movie/', '/tv/', '/iframe/']):
                 key = "vixsrc"
+                proxy = get_proxy_for_url('vixsrc.to', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = VixSrcExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = VixSrcExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif any(domain in url for domain in ["sportzonline", "sportsonline"]):
                 key = "sportsonline"
-                proxies = GLOBAL_PROXIES
+                proxy = get_proxy_for_url('sportsonline', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = SportsonlineExtractor(request_headers, proxies=proxies)
+                    self.extractors[key] = SportsonlineExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif "mixdrop" in url:
                 key = "mixdrop"
+                proxy = get_proxy_for_url('mixdrop', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = MixdropExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = MixdropExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif any(d in url for d in ["voe.sx", "voe.to", "voe.st", "voe.eu", "voe.la", "voe-network.net"]):
                 key = "voe"
+                proxy = get_proxy_for_url('voe.sx', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = VoeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = VoeExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif "popcdn.day" in url:
                 key = "freeshot"
+                proxy = get_proxy_for_url('popcdn.day', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = FreeshotExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = FreeshotExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif "streamtape.com" in url or "streamtape.to" in url or "streamtape.net" in url:
                 key = "streamtape"
+                proxy = get_proxy_for_url('streamtape', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = StreamtapeExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = StreamtapeExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             elif "orionoid.com" in url:
                 key = "orion"
+                proxy = get_proxy_for_url('orionoid.com', TRANSPORT_ROUTES, GLOBAL_PROXIES)
+                proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
-                    self.extractors[key] = OrionExtractor(request_headers, proxies=GLOBAL_PROXIES)
+                    self.extractors[key] = OrionExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             else:
                 # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
@@ -611,17 +616,8 @@ class HLSProxy:
             logger.info(f"🔑 Fetching AES key from: {key_url}")
             logger.debug(f"   -> with headers: {headers}")
             
-            # ✅ CORREZIONE: Seleziona il proxy corretto (DLHD, Vavoo, etc.) in base all'URL originale.
-            proxy_list = GLOBAL_PROXIES
-            original_channel_url = request.query.get('original_channel_url')
-
-            # Se l'URL della chiave è un dominio newkso.ru o l'URL originale è di DLHD, usa il proxy DLHD.
-            if "newkso.ru" in key_url or (original_channel_url and any(domain in original_channel_url for domain in ["daddylive", "dlhd"])):
-                proxy_list = DLHD_PROXIES or GLOBAL_PROXIES
-            elif original_channel_url and "vavoo.to" in original_channel_url:
-                proxy_list = VAVOO_PROXIES or GLOBAL_PROXIES
-            
-            proxy = random.choice(proxy_list) if proxy_list else None
+            # ✅ NUOVO: Usa il sistema di routing basato su TRANSPORT_ROUTES
+            proxy = get_proxy_for_url(key_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
@@ -1062,9 +1058,9 @@ class HLSProxy:
                 "streamtape_extractor": StreamtapeExtractor is not None,
             },
             "proxy_config": {
-                "global": f"{len(GLOBAL_PROXIES)} proxies caricati",
-                "vavoo": f"{len(VAVOO_PROXIES)} proxies caricati",
-                "dlhd": f"{len(DLHD_PROXIES)} proxies caricati",
+                "global_proxies": f"{len(GLOBAL_PROXIES)} proxies caricati",
+                "transport_routes": f"{len(TRANSPORT_ROUTES)} regole di routing configurate",
+                "routes": [{"url": route['url'], "has_proxy": route['proxy'] is not None} for route in TRANSPORT_ROUTES]
             },
             "endpoints": {
                 "/proxy/hls/manifest.m3u8": "Proxy HLS (compatibilità MFP) - ?d=<URL>",
@@ -1264,4 +1260,3 @@ class HLSProxy:
                     await extractor.close()
         except Exception as e:
             logger.error(f"Errore durante cleanup: {e}")
-
