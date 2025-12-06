@@ -10,7 +10,7 @@ load_dotenv() # Carica le variabili dal file .env
 # non venga silenziato, permettendo la visualizzazione dei log di accesso.
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 # Silenzia i log di accesso di aiohttp a meno che non siano errori
@@ -28,7 +28,7 @@ def parse_proxies(proxy_env_var: str) -> list:
     return []
 
 def parse_transport_routes() -> list:
-    """Analizza TRANSPORT_ROUTES nel formato {URL=domain, PROXY=proxy}, {URL=domain2, PROXY=proxy2}"""
+    """Analizza TRANSPORT_ROUTES nel formato {URL=domain, PROXY=proxy, DISABLE_SSL=true/false}, {URL=domain2, PROXY=proxy2}"""
     routes_str = os.environ.get('TRANSPORT_ROUTES', "").strip()
     if not routes_str:
         return []
@@ -45,20 +45,25 @@ def parse_transport_routes() -> list:
             # Rimuovi { e } se presenti
             part = part.strip('{}')
 
-            # Parsea URL=... e PROXY=...
+            # Parsea URL=..., PROXY=..., DISABLE_SSL=...
             url_match = None
             proxy_match = None
+            disable_ssl_match = None
 
             for item in part.split(','):
                 if item.startswith('URL='):
                     url_match = item[4:]
                 elif item.startswith('PROXY='):
                     proxy_match = item[6:]
+                elif item.startswith('DISABLE_SSL='):
+                    disable_ssl_str = item[12:].lower()
+                    disable_ssl_match = disable_ssl_str in ('true', '1', 'yes', 'on')
 
             if url_match:
                 routes.append({
                     'url': url_match,
-                    'proxy': proxy_match if proxy_match else None
+                    'proxy': proxy_match if proxy_match else None,
+                    'disable_ssl': disable_ssl_match if disable_ssl_match is not None else False
                 })
 
     except Exception as e:
@@ -86,6 +91,20 @@ def get_proxy_for_url(url: str, transport_routes: list, global_proxies: list) ->
     # Se non trova corrispondenza, usa global proxies
     return random.choice(global_proxies) if global_proxies else None
 
+def get_ssl_setting_for_url(url: str, transport_routes: list) -> bool:
+    """Determina se SSL deve essere disabilitato per un URL basato su TRANSPORT_ROUTES"""
+    if not url or not transport_routes:
+        return False  # Default: SSL enabled
+
+    # Cerca corrispondenze negli URL patterns
+    for route in transport_routes:
+        url_pattern = route['url']
+        if url_pattern in url:
+            return route.get('disable_ssl', False)
+
+    # Se non trova corrispondenza, SSL abilitato per default
+    return False
+
 # Configurazione proxy
 GLOBAL_PROXIES = parse_proxies('GLOBAL_PROXY')
 TRANSPORT_ROUTES = parse_transport_routes()
@@ -101,14 +120,14 @@ def check_password(request):
     """Verifica la password API se impostata."""
     if not API_PASSWORD:
         return True
-    
+
     # Check query param
     api_password_param = request.query.get("api_password")
     if api_password_param == API_PASSWORD:
         return True
-        
+
     # Check header
     if request.headers.get("x-api-password") == API_PASSWORD:
         return True
-        
+
     return False
