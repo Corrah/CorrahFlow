@@ -14,7 +14,7 @@ import aiohttp
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
 from aiohttp_proxy import ProxyConnector
 
-from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, API_PASSWORD, check_password
+from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, get_ssl_setting_for_url, API_PASSWORD, check_password
 from extractors.generic import GenericHLSExtractor, ExtractorError
 from utils.mpd_converter import MPDToHLSConverter
 from utils.drm_decrypter import decrypt_segment
@@ -771,9 +771,12 @@ class HLSProxy:
                 elif key.lower() == 'authorization':
                     headers['Authorization'] = headers.pop(key)
 
+            # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
+            disable_ssl = get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES)
+
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
-                async with session.get(stream_url, headers=headers, **connector_kwargs, ssl=False) as resp:
+                async with session.get(stream_url, headers=headers, **connector_kwargs, ssl=not disable_ssl) as resp:
                     content_type = resp.headers.get('content-type', '')
                     
                     print(f"   Upstream Response: {resp.status} [{content_type}]")
@@ -1113,7 +1116,9 @@ class HLSProxy:
                 if init_url in self.init_cache:
                     init_content = self.init_cache[init_url]
                 else:
-                    async with session.get(init_url, headers=headers, ssl=False) as resp:
+                    # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
+                    disable_ssl_init = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
+                    async with session.get(init_url, headers=headers, ssl=not disable_ssl_init) as resp:
                         if resp.status == 200:
                             init_content = await resp.read()
                             self.init_cache[init_url] = init_content
@@ -1122,7 +1127,9 @@ class HLSProxy:
                             return web.Response(status=502)
 
             # --- 2. Scarica Media Segment ---
-            async with session.get(url, headers=headers, ssl=False) as resp:
+            # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
+            disable_ssl_media = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
+            async with session.get(url, headers=headers, ssl=not disable_ssl_media) as resp:
                 if resp.status != 200:
                     logger.error(f"❌ Failed to fetch segment: {resp.status}")
                     return web.Response(status=502)
