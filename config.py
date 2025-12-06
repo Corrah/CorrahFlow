@@ -1,5 +1,6 @@
 import os
 import logging
+import random
 from dotenv import load_dotenv
 
 load_dotenv() # Carica le variabili dal file .env
@@ -26,13 +27,72 @@ def parse_proxies(proxy_env_var: str) -> list:
         return [p.strip() for p in proxies_str.split(',') if p.strip()]
     return []
 
-GLOBAL_PROXIES = parse_proxies('GLOBAL_PROXY')
-VAVOO_PROXIES = parse_proxies('VAVOO_PROXY')
-DLHD_PROXIES = parse_proxies('DLHD_PROXY')
+def parse_transport_routes() -> list:
+    """Analizza TRANSPORT_ROUTES nel formato {URL=domain, PROXY=proxy}, {URL=domain2, PROXY=proxy2}"""
+    routes_str = os.environ.get('TRANSPORT_ROUTES', "").strip()
+    if not routes_str:
+        return []
 
+    routes = []
+    try:
+        # Rimuovi spazi e dividi per }, {
+        route_parts = [part.strip() for part in routes_str.replace(' ', '').split('},{')]
+
+        for part in route_parts:
+            if not part:
+                continue
+
+            # Rimuovi { e } se presenti
+            part = part.strip('{}')
+
+            # Parsea URL=... e PROXY=...
+            url_match = None
+            proxy_match = None
+
+            for item in part.split(','):
+                if item.startswith('URL='):
+                    url_match = item[4:]
+                elif item.startswith('PROXY='):
+                    proxy_match = item[6:]
+
+            if url_match:
+                routes.append({
+                    'url': url_match,
+                    'proxy': proxy_match if proxy_match else None
+                })
+
+    except Exception as e:
+        logger.warning(f"Errore nel parsing di TRANSPORT_ROUTES: {e}")
+
+    return routes
+
+def get_proxy_for_url(url: str, transport_routes: list, global_proxies: list) -> str:
+    """Trova il proxy appropriato per un URL basato su TRANSPORT_ROUTES"""
+    if not url or not transport_routes:
+        return random.choice(global_proxies) if global_proxies else None
+
+    # Cerca corrispondenze negli URL patterns
+    for route in transport_routes:
+        url_pattern = route['url']
+        if url_pattern in url:
+            proxy_value = route['proxy']
+            if proxy_value:
+                # Se è un singolo proxy, restituiscilo
+                return proxy_value
+            else:
+                # Se proxy è vuoto, usa connessione diretta
+                return None
+
+    # Se non trova corrispondenza, usa global proxies
+    return random.choice(global_proxies) if global_proxies else None
+
+# Configurazione proxy
+GLOBAL_PROXIES = parse_proxies('GLOBAL_PROXY')
+TRANSPORT_ROUTES = parse_transport_routes()
+
+# Logging configurazione proxy
 if GLOBAL_PROXIES: logging.info(f"🌍 Caricati {len(GLOBAL_PROXIES)} proxy globali.")
-if VAVOO_PROXIES: logging.info(f"🎬 Caricati {len(VAVOO_PROXIES)} proxy Vavoo.")
-if DLHD_PROXIES: logging.info(f"📺 Caricati {len(DLHD_PROXIES)} proxy DLHD.")
+if TRANSPORT_ROUTES: logging.info(f"🚦 Caricate {len(TRANSPORT_ROUTES)} regole di trasporto.")
 
 API_PASSWORD = os.environ.get("API_PASSWORD")
 PORT = int(os.environ.get("PORT", 7860))
