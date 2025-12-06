@@ -60,7 +60,14 @@ class GenericHLSExtractor:
         parsed_url = urlparse(url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
         headers = self.base_headers.copy()
-        headers.update({"referer": origin, "origin": origin})
+        
+        # ✅ FIX: Non sovrascrivere Referer/Origin se già presenti in request_headers (es. passati via h_ params)
+        # GenericHLSExtractor viene usato come fallback per i segmenti, ma se abbiamo già headers specifici
+        # (come quelli di DLHD), dobbiamo preservarli e non resettarli al dominio del segmento.
+        if not any(k.lower() == 'referer' for k in self.request_headers):
+            headers["referer"] = origin
+        if not any(k.lower() == 'origin' for k in self.request_headers):
+            headers["origin"] = origin
 
         # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
         # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
