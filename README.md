@@ -182,11 +182,14 @@ Il modo più semplice per configurare i proxy è tramite un file `.env`.
 # Proxy globale per tutto il traffico
 GLOBAL_PROXY=http://user:pass@myproxy.com:8080
 
-# Proxy multipli per DLHD (uno verrà scelto a caso)
-DLHD_PROXY=socks5://proxy1.com:1080,socks5://proxy2.com:1080
+# --- Regole di Trasporto (TRANSPORT_ROUTES) ---
+# Sistema avanzato per routing proxy basato su URL patterns.
+# Formato: {URL=pattern, PROXY=proxy_url}, {URL=pattern2, PROXY=proxy_url2}
+# - URL: pattern da cercare nell'URL (es. vavoo.to, dlhd.dad, giokko.ru)
+# - PROXY: proxy da usare (lascia vuoto per connessione diretta)
+# Esempi:
 
-# Proxy specifico per Vavoo
-VAVOO_PROXY=socks5://vavoo-proxy.net:9050
+# TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080}, {URL=dlhd.dad, PROXY=http://proxy2:8080}
 
 # Password per proteggere le API
 API_PASSWORD=mysecretpassword
@@ -194,8 +197,7 @@ API_PASSWORD=mysecretpassword
 
 Le variabili supportate sono:
 - `GLOBAL_PROXY`: Proxy di fallback per tutte le richieste.
-- `VAVOO_PROXY`: Proxy specifico per le richieste a Vavoo.
-- `DLHD_PROXY`: Proxy specifico per le richieste a DaddyLiveHD.
+- `TRANSPORT_ROUTES`: Sistema avanzato per routing proxy basato su URL patterns.
 - `PORT`: Porta su cui il server ascolta (default: 7860).
 - `API_PASSWORD`: Password per proteggere l'accesso alle API.
 
