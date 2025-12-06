@@ -5,416 +5,312 @@ import os
 import urllib.parse
 from urllib.parse import urljoin
 from typing import List, Dict, Optional, Any
+from datetime import datetime, timedelta
 
-# Tenta di usare lxml per prestazioni migliori (parsing XML 5-10x più veloce),
-# altrimenti usa la libreria standard xml.etree.ElementTree
+# Tenta di usare lxml per prestazioni migliori, fallback su xml.etree
 try:
     from lxml import etree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
 
-# Configurazione Logging
 logger = logging.getLogger(__name__)
 
 class MPDToHLSConverter:
     """
-    Converte manifest MPD (DASH) in playlist HLS (m3u8) on-the-fly.
-    Ottimizzato per stabilità live stream, gestione buffer e corretta formattazione dei template.
+    Convertitore MPD (DASH) -> HLS (m3u8).
+    Ottimizzato per Live Streaming stabile su dispositivi Apple e Android (ExoPlayer).
     """
     
     def __init__(self):
-        # Namespace XML standard per DASH e protezione contenuti
         self.ns = {
             'mpd': 'urn:mpeg:dash:schema:mpd:2011',
             'cenc': 'urn:mpeg:cenc:2013',
             'xsi': 'http://www.w3.org/2001/XMLSchema-instance'
         }
         
-        # Regex pre-compilate per massimizzare le prestazioni durante le richieste frequenti
-        # Parsing durata ISO8601 (es. PT1H2M3.5S)
+        # Regex pre-compilate
         self.re_duration = re.compile(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(\.\d+)?)S)?')
-        
-        # Regex per template DASH (es. $Number%05d$)
         self.re_template_bw = re.compile(r'\$Bandwidth(?s:%.[^$]+)?\$')
         self.re_template_rep = re.compile(r'\$RepresentationID(?s:%.[^$]+)?\$')
         self.re_template_num = re.compile(r'\$Number(?:(%[^$]+))?\$')
         self.re_template_time = re.compile(r'\$Time(?:(%[^$]+))?\$')
 
-    def _parse_iso8601(self, duration_str: str) -> float:
-        """Converte una durata in formato ISO8601 (stringa) in secondi (float)."""
-        if not duration_str: 
-            return 0.0
+    def _parse_iso8601_duration(self, duration_str: str) -> float:
+        """Converte durata ISO8601 (es. PT1H2M3.5S) in secondi float."""
+        if not duration_str: return 0.0
         match = self.re_duration.match(duration_str)
-        if not match: 
-            return 0.0
-        
+        if not match: return 0.0
         h = float(match.group(1) or 0)
         m = float(match.group(2) or 0)
         s = float(match.group(3) or 0)
         return (h * 3600) + (m * 60) + s
 
+    def _parse_iso8601_datetime(self, date_str: str) -> datetime:
+        """Converte data ISO8601 in datetime object."""
+        try:
+            # Rimuovi Z finale per parsing semplice UTC
+            clean_str = date_str.replace('Z', '')
+            if '.' in clean_str:
+                return datetime.strptime(clean_str, "%Y-%m-%dT%H:%M:%S.%f")
+            return datetime.strptime(clean_str, "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            return datetime.utcnow()
+
     def _process_template(self, url_template: str, rep_id: str, number: int = None, time: int = None, bandwidth: int = None) -> str:
-        """
-        Sostituisce i placeholder DASH ($Number$, $Time$, ecc.) con i valori reali,
-        rispettando eventuali formattazioni printf-style (es. %05d).
-        """
+        """Applica i valori ai template DASH ($Number$, $Time$, etc)."""
         url = url_template
-        
-        # Sostituzione Bandwidth
         if bandwidth is not None:
             url = self.re_template_bw.sub(str(bandwidth), url)
-            
-        # Sostituzione ID
         url = self.re_template_rep.sub(str(rep_id), url)
-
-        # Sostituzione Number
         if number is not None:
-            def repl_num(m):
-                fmt = m.group(1)
-                # Se c'è un formato (es. %05d), lo applica, altrimenti usa str() semplice
-                return fmt % number if fmt else str(number)
+            def repl_num(m): return (m.group(1) % number) if m.group(1) else str(number)
             url = self.re_template_num.sub(repl_num, url)
-
-        # Sostituzione Time
         if time is not None:
-            def repl_time(m):
-                fmt = m.group(1)
-                return fmt % time if fmt else str(time)
+            def repl_time(m): return (m.group(1) % time) if m.group(1) else str(time)
             url = self.re_template_time.sub(repl_time, url)
-            
         return url
 
     def convert_master_playlist(self, manifest_content: str, proxy_base: str, original_url: str, params: str) -> str:
-        """
-        Genera la Master Playlist HLS (elenco delle varianti Audio/Video).
-        """
+        """Genera la Master Playlist HLS (elenco varianti)."""
         try:
-            # Gestione encoding e fix namespace mancante
-            if isinstance(manifest_content, str):
-                manifest_content = manifest_content.encode('utf-8')
-            
+            if isinstance(manifest_content, str): manifest_content = manifest_content.encode('utf-8')
             if b'xmlns' not in manifest_content:
                 manifest_content = manifest_content.replace(b'<MPD', b'<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"', 1)
             
             root = ET.fromstring(manifest_content)
+            lines = ['#EXTM3U', '#EXT-X-VERSION:6']
             
-            lines = ['#EXTM3U', '#EXT-X-VERSION:3']
+            video_sets, audio_sets, subtitle_sets = [], [], []
             
-            video_sets = []
-            audio_sets = []
-            subtitle_sets = []
-            
-            # Classificazione AdaptationSet
-            for adaptation_set in root.findall('.//mpd:AdaptationSet', self.ns):
-                mime = adaptation_set.get('mimeType', '')
-                content = adaptation_set.get('contentType', '')
-                
-                if 'video' in mime or 'video' in content:
-                    video_sets.append(adaptation_set)
-                elif 'audio' in mime or 'audio' in content:
-                    audio_sets.append(adaptation_set)
-                elif 'text' in mime or 'subtitles' in content or 'application/ttml+xml' in mime:
-                    subtitle_sets.append(adaptation_set)
+            for aset in root.findall('.//mpd:AdaptationSet', self.ns):
+                mime = aset.get('mimeType', '')
+                content = aset.get('contentType', '')
+                if 'video' in mime or 'video' in content: video_sets.append(aset)
+                elif 'audio' in mime or 'audio' in content: audio_sets.append(aset)
+                elif 'text' in mime or 'subtitles' in content or 'application/ttml+xml' in mime: subtitle_sets.append(aset)
                 else:
-                    # Fallback detection basata sulle representation figlie
-                    if adaptation_set.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None:
-                        video_sets.append(adaptation_set)
-                    elif adaptation_set.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None:
-                        audio_sets.append(adaptation_set)
+                    if aset.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None: video_sets.append(aset)
+                    elif aset.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None: audio_sets.append(aset)
 
-            # --- GESTIONE AUDIO ---
-            audio_group_id = 'audio'
+            # Audio
+            audio_group = 'audio'
             has_audio = False
-            
             for i, aset in enumerate(audio_sets):
                 lang = aset.get('lang', 'und')
-                # Prende la prima representation per i dettagli tecnici
                 rep = aset.find('mpd:Representation', self.ns)
                 if rep is None: continue
                 
                 rep_id = rep.get('id')
                 bw = rep.get('bandwidth', '128000')
+                enc_url = urllib.parse.quote(original_url, safe='')
+                uri = f"{proxy_base}/proxy/hls/manifest.m3u8?d={enc_url}&format=hls&rep_id={rep_id}{params}"
                 
-                encoded_url = urllib.parse.quote(original_url, safe='')
-                media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}&format=hls&rep_id={rep_id}{params}"
-                
-                # Nome leggibile per il menu audio
-                name = f"Audio {lang.upper()} ({int(bw)//1000}k)"
-                is_default = "YES" if i == 0 else "NO"
-                
-                lines.append(f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="{audio_group_id}",NAME="{name}",LANGUAGE="{lang}",DEFAULT={is_default},AUTOSELECT=YES,URI="{media_url}"')
+                name = f"Audio {lang.upper()}"
+                default = "YES" if i == 0 else "NO"
+                lines.append(f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="{audio_group}",NAME="{name}",LANGUAGE="{lang}",DEFAULT={default},AUTOSELECT=YES,URI="{uri}"')
                 has_audio = True
 
-            # --- GESTIONE SOTTOTITOLI ---
-            subs_group_id = 'subs'
+            # Sottotitoli
+            subs_group = 'subs'
             has_subs = False
-            
-            for i, aset in enumerate(subtitle_sets):
+            for aset in subtitle_sets:
                 lang = aset.get('lang', 'und')
                 rep = aset.find('mpd:Representation', self.ns)
                 if rep is None: continue
-                
                 rep_id = rep.get('id')
-                encoded_url = urllib.parse.quote(original_url, safe='')
-                media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}&format=hls&rep_id={rep_id}{params}"
-                name = f"Sub {lang.upper()}"
-                
-                lines.append(f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="{subs_group_id}",NAME="{name}",LANGUAGE="{lang}",AUTOSELECT=YES,URI="{media_url}"')
+                enc_url = urllib.parse.quote(original_url, safe='')
+                uri = f"{proxy_base}/proxy/hls/manifest.m3u8?d={enc_url}&format=hls&rep_id={rep_id}{params}"
+                lines.append(f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="{subs_group}",NAME="Sub {lang}",LANGUAGE="{lang}",AUTOSELECT=YES,URI="{uri}"')
                 has_subs = True
 
-            # --- GESTIONE VIDEO ---
+            # Video
             for aset in video_sets:
-                # Codec a livello di AdaptationSet (fallback)
-                aset_codecs = aset.get('codecs')
-                
+                base_codecs = aset.get('codecs')
                 for rep in aset.findall('mpd:Representation', self.ns):
                     rep_id = rep.get('id')
-                    bw = int(rep.get('bandwidth', 0))
-                    width = rep.get('width')
-                    height = rep.get('height')
+                    bw = rep.get('bandwidth', '0')
+                    w = rep.get('width')
+                    h = rep.get('height')
                     fps = rep.get('frameRate')
-                    codecs = rep.get('codecs') or aset_codecs
+                    codecs = rep.get('codecs') or base_codecs
                     
-                    encoded_url = urllib.parse.quote(original_url, safe='')
-                    media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_url}&format=hls&rep_id={rep_id}{params}"
+                    enc_url = urllib.parse.quote(original_url, safe='')
+                    uri = f"{proxy_base}/proxy/hls/manifest.m3u8?d={enc_url}&format=hls&rep_id={rep_id}{params}"
                     
-                    # Costruzione attributi EXT-X-STREAM-INF
-                    inf_parts = [f'BANDWIDTH={bw}']
-                    if width and height: 
-                        inf_parts.append(f'RESOLUTION={width}x{height}')
-                    if fps: 
-                        inf_parts.append(f'FRAME-RATE={fps}')
-                    if codecs: 
-                        inf_parts.append(f'CODECS="{codecs}"')
+                    inf = [f'BANDWIDTH={bw}']
+                    if w and h: inf.append(f'RESOLUTION={w}x{h}')
+                    if fps: inf.append(f'FRAME-RATE={fps}')
+                    if codecs: inf.append(f'CODECS="{codecs}"')
+                    if has_audio: inf.append(f'AUDIO="{audio_group}"')
+                    if has_subs: inf.append(f'SUBTITLES="{subs_group}"')
                     
-                    # Associazione Audio/Sottotitoli
-                    if has_audio: 
-                        inf_parts.append(f'AUDIO="{audio_group_id}"')
-                    if has_subs: 
-                        inf_parts.append(f'SUBTITLES="{subs_group_id}"')
-                    
-                    lines.append(f'#EXT-X-STREAM-INF:{",".join(inf_parts)}')
-                    lines.append(media_url)
+                    lines.append(f'#EXT-X-STREAM-INF:{",".join(inf)}')
+                    lines.append(uri)
             
             return '\n'.join(lines)
-
         except Exception as e:
-            logger.exception("Errore generazione Master Playlist")
-            return "#EXTM3U\n#EXT-X-ERROR: " + str(e)
+            logger.error(f"Master Playlist Error: {e}")
+            return f"#EXTM3U\n#EXT-X-ERROR: {e}"
 
     def convert_media_playlist(self, manifest_content: str, rep_id: str, proxy_base: str, original_url: str, params: str, clearkey_param: str = None) -> str:
-        """
-        Genera la Media Playlist HLS per una specifica traccia (Audio/Video).
-        Include logica anti-buffering per flussi LIVE.
-        """
+        """Genera Media Playlist con gestione Program-Date-Time e Anti-Buffer."""
         try:
-            if isinstance(manifest_content, str):
-                manifest_content = manifest_content.encode('utf-8')
-                
-            # Parsing XML
+            if isinstance(manifest_content, str): manifest_content = manifest_content.encode('utf-8')
             if b'xmlns' not in manifest_content:
                 manifest_content = manifest_content.replace(b'<MPD', b'<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"', 1)
                 
             root = ET.fromstring(manifest_content)
-            
-            # Rilevamento tipo stream
             mpd_type = root.get('type', 'static')
             is_live = mpd_type.lower() == 'dynamic'
-            
-            # Ricerca Representation specifica
-            representation = None
-            adaptation_set = None
-            
-            for aset in root.findall('.//mpd:AdaptationSet', self.ns):
-                rep = aset.find(f'mpd:Representation[@id="{rep_id}"]', self.ns)
-                if rep is not None:
-                    representation = rep
-                    adaptation_set = aset
+
+            # Calcolo Availability Start Time per Program Date Time
+            ast_str = root.get('availabilityStartTime')
+            start_time = self._parse_iso8601_datetime(ast_str) if ast_str else datetime.utcnow()
+
+            # Trova Representation
+            rep = None
+            aset = None
+            for a in root.findall('.//mpd:AdaptationSet', self.ns):
+                r = a.find(f'mpd:Representation[@id="{rep_id}"]', self.ns)
+                if r is not None:
+                    rep = r
+                    aset = a
                     break
             
-            if representation is None:
-                return "#EXTM3U\n#EXT-X-ERROR: Representation not found"
+            if rep is None: return "#EXTM3U\n#EXT-X-ERROR: Rep not found"
 
-            bandwidth = int(representation.get('bandwidth', 0))
-            
-            # Inizio Playlist - Versione 7 necessaria per fMP4
-            lines = ['#EXTM3U', '#EXT-X-VERSION:7']
-            
-            # --- GESTIONE DECRITTAZIONE (ClearKey) ---
+            bw = int(rep.get('bandwidth', 0))
+            lines = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-INDEPENDENT-SEGMENTS']
+
+            # Decrittazione
             server_side_decryption = False
-            decryption_query = ""
+            dec_query = ""
             if clearkey_param:
                 try:
-                    # Formato atteso: kid_hex:key_hex
-                    parts = clearkey_param.split(':')
-                    if len(parts) == 2:
-                        kid, key = parts
-                        server_side_decryption = True
-                        decryption_query = f"&key={key}&key_id={kid}"
-                except Exception as e:
-                    logger.error(f"Errore parsing clearkey: {e}")
+                    kid, key = clearkey_param.split(':')
+                    server_side_decryption = True
+                    dec_query = f"&key={key}&key_id={kid}"
+                except: pass
 
-            # --- RISOLUZIONE BASE URL ---
-            base_url_node = root.find('mpd:BaseURL', self.ns)
-            if base_url_node is not None and base_url_node.text:
-                 base_url = urljoin(original_url, base_url_node.text)
-            else:
-                 base_url = os.path.dirname(original_url)
-            
-            if not base_url.endswith('/'): 
-                base_url += '/'
+            # Base URL
+            base_node = root.find('mpd:BaseURL', self.ns)
+            base_url = urljoin(original_url, base_node.text) if (base_node is not None and base_node.text) else os.path.dirname(original_url)
+            if not base_url.endswith('/'): base_url += '/'
 
-            # --- LETTURA TEMPLATE ---
-            segment_template = representation.find('mpd:SegmentTemplate', self.ns)
-            if segment_template is None:
-                # Fallback sull'AdaptationSet
-                segment_template = adaptation_set.find('mpd:SegmentTemplate', self.ns)
-            
-            if not segment_template:
-                return "#EXTM3U\n#EXT-X-ERROR: SegmentTemplate required (SegmentList not supported in this mode)"
+            # Template
+            tmpl = rep.find('mpd:SegmentTemplate', self.ns) or aset.find('mpd:SegmentTemplate', self.ns)
+            if not tmpl: return "#EXTM3U\n#EXT-X-ERROR: No Template"
 
-            timescale = int(segment_template.get('timescale', '1'))
-            init_template = segment_template.get('initialization')
-            media_template = segment_template.get('media')
-            start_number = int(segment_template.get('startNumber', '1'))
-            
-            # --- 1. EXT-X-MAP (INIT SEGMENT) ---
-            # Fondamentale per fMP4: contiene i metadati (moov) per decodificare lo stream.
-            if init_template:
-                init_url = self._process_template(init_template, rep_id, bandwidth=bandwidth)
-                full_init_url = urljoin(base_url, init_url)
-                encoded_init_url = urllib.parse.quote(full_init_url, safe='')
+            timescale = int(tmpl.get('timescale', '1'))
+            init_tmpl = tmpl.get('initialization')
+            media_tmpl = tmpl.get('media')
+            start_num = int(tmpl.get('startNumber', '1'))
+
+            # 1. Init Segment
+            encoded_init = ""
+            if init_tmpl:
+                init_url = self._process_template(init_tmpl, rep_id, bandwidth=bw)
+                full_init = urljoin(base_url, init_url)
+                encoded_init = urllib.parse.quote(full_init, safe='')
                 
-                if server_side_decryption:
-                    # Se decrittiamo, dobbiamo passare anche l'init al decryptor
-                    map_uri = f"{proxy_base}/decrypt/init.mp4?url={encoded_init_url}{decryption_query}{params}"
-                else:
-                    map_uri = f"{proxy_base}/segment/init.mp4?base_url={encoded_init_url}{params}"
-                
+                map_uri = f"{proxy_base}/decrypt/init.mp4?url={encoded_init}{dec_query}{params}" if server_side_decryption else f"{proxy_base}/segment/init.mp4?base_url={encoded_init}{params}"
                 lines.append(f'#EXT-X-MAP:URI="{map_uri}"')
 
-            # --- 2. COSTRUZIONE LISTA SEGMENTI ---
+            # 2. Costruzione Segmenti
             segments = []
-            timeline = segment_template.find('mpd:SegmentTimeline', self.ns)
+            timeline = tmpl.find('mpd:SegmentTimeline', self.ns)
             
             if timeline is not None:
-                # Modalità Timeline (precisa)
-                current_time = 0
-                current_seq = start_number
+                curr_time = 0
+                curr_seq = start_num
                 
                 for s in timeline.findall('mpd:S', self.ns):
                     t = s.get('t')
                     d = int(s.get('d'))
                     r = int(s.get('r', '0'))
                     
-                    if t is not None:
-                        current_time = int(t)
+                    if t is not None: curr_time = int(t)
                     
-                    duration_sec = d / timescale
-                    # Espansione delle ripetizioni (r)
+                    dur_sec = d / timescale
                     count = r + 1
                     
                     for _ in range(count):
+                        # Program Date Time calculation
+                        pdt = start_time + timedelta(seconds=(curr_time / timescale))
+                        
                         segments.append({
-                            'number': current_seq,
-                            'time': current_time,
-                            'duration': duration_sec
+                            'number': curr_seq,
+                            'time': curr_time,
+                            'duration': dur_sec,
+                            'pdt': pdt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
                         })
-                        current_time += d
-                        current_seq += 1
+                        curr_time += d
+                        curr_seq += 1
             else:
-                # Modalità Duration fissa (Fallback)
-                duration = int(segment_template.get('duration', '0'))
-                if duration > 0:
-                    seg_duration = duration / timescale
-                    # Stima segmenti (per Live senza timeline è rischioso, ma ok per VOD)
-                    num_segments = 100 # Placeholder
-                    
-                    # Se VOD, prova a calcolare il totale reale
+                # Fallback VOD
+                dur = int(tmpl.get('duration', 0))
+                if dur > 0:
+                    dur_sec = dur / timescale
+                    count = 100 # Default VOD limit
                     if not is_live:
-                        period = root.find('mpd:Period', self.ns)
-                        if period is not None and period.get('duration'):
-                            total_dur = self._parse_iso8601(period.get('duration'))
-                            num_segments = int(total_dur / seg_duration)
+                        p = root.find('mpd:Period', self.ns)
+                        if p and p.get('duration'):
+                            total = self._parse_iso8601_duration(p.get('duration'))
+                            count = int(total / dur_sec)
                     
-                    for i in range(num_segments):
+                    for i in range(count):
                         segments.append({
-                            'number': start_number + i,
-                            'time': (start_number + i) * duration,
-                            'duration': seg_duration
+                            'number': start_num + i,
+                            'time': (start_num + i) * dur,
+                            'duration': dur_sec,
+                            'pdt': None
                         })
 
-            # --- 3. LOGICA LIVE EDGE (ANTI-BUFFERING) ---
+            # 3. Filtro Live Window & Hold-back
             if is_live and segments:
-                # A. Gestione Finestra DVR
-                dvr_depth_str = root.get('timeShiftBufferDepth')
-                # Se non specificato, usiamo una finestra sicura di 3 minuti
-                dvr_window = self._parse_iso8601(dvr_depth_str) if dvr_depth_str else 180.0
+                # Finestra DVR 3 minuti
+                window = 180.0
+                total_dur = sum(s['duration'] for s in segments)
                 
-                total_available_dur = sum(s['duration'] for s in segments)
+                if total_dur > window:
+                    keep = []
+                    acc = 0.0
+                    for s in reversed(segments):
+                        keep.insert(0, s)
+                        acc += s['duration']
+                        if acc >= window: break
+                    segments = keep
                 
-                # Taglia i segmenti troppo vecchi che escono dalla finestra DVR
-                if total_available_dur > dvr_window:
-                    kept_segments = []
-                    accumulated = 0.0
-                    for seg in reversed(segments):
-                        kept_segments.insert(0, seg)
-                        accumulated += seg['duration']
-                        if accumulated >= dvr_window:
-                            break
-                    segments = kept_segments
+                # SAFETY HOLD-BACK (3 segmenti)
+                # Rimuove gli ultimi segmenti per assicurare che siano pronti sulla CDN
+                if len(segments) > 3:
+                    segments = segments[:-3]
                 
-                # B. Safety Hold-back (Cruciale per evitare 404)
-                # Rimuove gli ultimi 2 segmenti dalla lista per garantire che 
-                # siano effettivamente stati scritti e propagati sulla CDN origine.
-                if len(segments) > 2:
-                    segments = segments[:-2]
-                
-                # Imposta Media Sequence
                 if segments:
                     lines.append(f'#EXT-X-MEDIA-SEQUENCE:{segments[0]["number"]}')
+
+            # 4. Finalizzazione Playlist
+            target_dur = math.ceil(max(s['duration'] for s in segments)) if segments else 6
+            lines.insert(2, f'#EXT-X-TARGETDURATION:{target_dur}')
             
-            # --- 4. CALCOLO TARGET DURATION ---
-            if segments:
-                max_duration = max(s['duration'] for s in segments)
-                # Arrotondamento per eccesso obbligatorio per standard HLS
-                target_duration = math.ceil(max_duration)
-                lines.insert(2, f'#EXT-X-TARGETDURATION:{target_duration}')
-            else:
-                lines.insert(2, '#EXT-X-TARGETDURATION:6')
+            if not is_live: lines.append('#EXT-X-PLAYLIST-TYPE:VOD')
 
-            if not is_live:
-                lines.append('#EXT-X-PLAYLIST-TYPE:VOD')
-
-            # --- 5. SCRITTURA SEGMENTI IN PLAYLIST ---
             for seg in segments:
-                # Genera nome file dal template
-                seg_name = self._process_template(
-                    media_template, 
-                    rep_id, 
-                    number=seg['number'], 
-                    time=seg['time'], 
-                    bandwidth=bandwidth
-                )
+                if seg.get('pdt'):
+                    lines.append(f'#EXT-X-PROGRAM-DATE-TIME:{seg["pdt"]}')
                 
-                full_seg_url = urljoin(base_url, seg_name)
-                encoded_seg_url = urllib.parse.quote(full_seg_url, safe='')
+                name = self._process_template(media_tmpl, rep_id, number=seg['number'], time=seg['time'], bandwidth=bw)
+                full = urljoin(base_url, name)
+                enc = urllib.parse.quote(full, safe='')
                 
-                # Durata precisa
-                lines.append(f'#EXTINF:{seg["duration"]:.6f},')
+                uri = f"{proxy_base}/decrypt/segment.mp4?url={enc}&init_url={encoded_init}{dec_query}{params}" if server_side_decryption else f"{proxy_base}/segment/{name}?base_url={enc}{params}"
                 
-                if server_side_decryption:
-                    # Endpoint decrypt
-                    lines.append(f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_query}{params}")
-                else:
-                    # Endpoint proxy standard
-                    lines.append(f"{proxy_base}/segment/{seg_name}?base_url={encoded_seg_url}{params}")
+                lines.append(f'#EXTINF:{seg["duration"]:.5f},')
+                lines.append(uri)
 
-            if not is_live:
-                lines.append('#EXT-X-ENDLIST')
+            if not is_live: lines.append('#EXT-X-ENDLIST')
 
             return '\n'.join(lines)
-
         except Exception as e:
-            logger.exception(f"Errore critico Media Playlist rep_id={rep_id}")
-            return "#EXTM3U\n#EXT-X-ERROR: " + str(e)
+            logger.error(f"Playlist Generation Error: {e}")
+            return f"#EXTM3U\n#EXT-X-ERROR: {e}"
