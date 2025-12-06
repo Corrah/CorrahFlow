@@ -8,6 +8,7 @@ import gzip
 import zlib
 import zstandard
 import random
+import time
 from urllib.parse import urlparse, quote_plus
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, FormData
@@ -385,11 +386,32 @@ class DLHDExtractor:
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
                     }
+
+                    # ✅ Aggiungi cookies dalla sessione corrente
+                    if self.session:
+                        # Log all cookies for debugging
+                        all_cookies = list(self.session.cookie_jar)
+                        logger.info(f"🍪 All cookies in jar: {all_cookies}")
+                        
+                        cookies = self.session.cookie_jar.filter_cookies(stream_url)
+                        cookie_str = "; ".join([f"{k}={v.value}" for k, v in cookies.items()])
+                        if cookie_str:
+                            stream_headers['Cookie'] = cookie_str
+                            logger.info(f"🍪 Cookies aggiunti agli headers: {cookie_str[:50]}...")
+
+                    expires_at = None
+                    try:
+                        if params.get('auth_expiry'):
+                            expires_at = float(params['auth_expiry'])
+                            logger.info(f"⏳ Auth Expiry: {expires_at} (Current time: {time.time()})")
+                    except (ValueError, TypeError):
+                        pass
                     
                     return {
                         "destination_url": stream_url,
                         "request_headers": stream_headers,
                         "mediaflow_endpoint": self.mediaflow_endpoint,
+                        "expires_at": expires_at
                     }
                     
                 except Exception as e:
@@ -412,9 +434,15 @@ class DLHDExtractor:
                 cached_data = self._stream_data_cache[channel_id]
                 stream_url = cached_data.get("destination_url")
                 stream_headers = cached_data.get("request_headers", {})
+                expires_at = cached_data.get("expires_at")
 
                 is_valid = False
-                if stream_url:
+                
+                # ✅ Check expiry first (con buffer di 30 secondi)
+                if expires_at and time.time() > (expires_at - 30):
+                     logger.warning(f"⚠️ Cache scaduta per il canale ID {channel_id} (expires_at: {expires_at}).")
+                     is_valid = False
+                elif stream_url:
                     try:
                         async with aiohttp.ClientSession(timeout=ClientTimeout(total=10)) as validation_session:
                             async with validation_session.head(stream_url, headers=stream_headers, ssl=False) as response:
@@ -442,8 +470,15 @@ class DLHDExtractor:
             async with lock:
                 # Ricontrolla la cache dopo aver acquisito il lock
                 if not force_refresh and channel_id in self._stream_data_cache:
-                    logger.info(f"✅ Dati per il canale {channel_id} trovati in cache dopo aver atteso il lock.")
-                    return self._stream_data_cache[channel_id]
+                    cached_data = self._stream_data_cache[channel_id]
+                    expires_at = cached_data.get("expires_at")
+                    
+                    # Se è scaduta anche la nuova cache (improbabile ma possibile), procedi con estrazione
+                    if expires_at and time.time() > (expires_at - 30):
+                        logger.info(f"⚠️ Cache (ricontrollata) scaduta per {channel_id}, procedo con nuova estrazione.")
+                    else:
+                        logger.info(f"✅ Dati per il canale {channel_id} trovati in cache dopo aver atteso il lock.")
+                        return self._stream_data_cache[channel_id]
 
                 # Procedi con l'estrazione diretta
                 logger.info(f"⚙️ Nessuna cache valida per {channel_id}, avvio estrazione diretta...")
