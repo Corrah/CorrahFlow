@@ -189,7 +189,7 @@ GLOBAL_PROXY=http://user:pass@myproxy.com:8080
 # - PROXY: proxy da usare (lascia vuoto per connessione diretta)
 # Esempi:
 
-# TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080}, {URL=dlhd.dad, PROXY=http://proxy2:8080}
+TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080}, {URL=dlhd.dad, PROXY=http://proxy2:8080}
 
 # Password per proteggere le API
 API_PASSWORD=mysecretpassword
