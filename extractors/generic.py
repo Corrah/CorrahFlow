@@ -76,7 +76,11 @@ class GenericHLSExtractor:
         # Only allow specific headers that are safe or necessary for authentication.
         for h, v in self.request_headers.items():
             h_lower = h.lower()
-            if h_lower in ["authorization", "x-api-key", "x-auth-token", "referer", "user-agent", "cookie"]:
+            # ✅ FIX: Non copiare User-Agent dal client se abbiamo già un base_header user-agent
+            if h_lower == "user-agent":
+                continue
+                
+            if h_lower in ["authorization", "x-api-key", "x-auth-token", "cookie"]:
                 headers[h] = v
             # Explicitly block forwarding of IP-related headers
             if h_lower in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
