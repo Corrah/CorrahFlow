@@ -13,6 +13,7 @@ class MP4Atom:
     """Rappresenta un 'box' (atom) MP4."""
     __slots__ = ("atom_type", "size", "data")
 
+    # Correzione: aggiunto '' prima del tipo
     def __init__(self, atom_type: bytes, size: int,  Union[memoryview, bytearray]):
         self.atom_type = atom_type
         self.size = size
