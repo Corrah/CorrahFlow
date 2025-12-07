@@ -111,17 +111,12 @@ class FFmpegManager:
             "-headers", headers_str,
         ]
         
-        # Decryption Key handling
+        # Decryption Key handling - DISABLED: Standard FFmpeg may not support CENC
+        # For CENC support, need FFmpeg compiled with libavcodec CENC decoder
         if clearkey:
-            try:
-                # FFmpeg DASH demuxer uses -decryption_key option
-                if ':' in clearkey:
-                    kid, key = clearkey.split(':')
-                    cmd.extend(["-decryption_key", key])
-                else:
-                    cmd.extend(["-decryption_key", clearkey])
-            except Exception as e:
-                logger.error(f"Error parsing clearkey: {e}")
+            logger.warning(f"ClearKey provided but CENC decryption disabled for compatibility: {clearkey}")
+            # Decryption won't work - stream will be encrypted
+            pass
 
         cmd.extend([
             "-i", url,
@@ -144,17 +139,13 @@ class FFmpegManager:
         logger.info(f"Starting FFmpeg for {stream_id} with key: {clearkey}")
         logger.info(f"Command: {cmd}")
         
-        log_file = open(os.path.join(stream_dir, "ffmpeg.log"), "w")
-        log_file.write(f"Command: {cmd}\n\n")
-        log_file.flush()
+        log_file_path = os.path.join(stream_dir, "ffmpeg.log")
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=log_file
+                stderr=asyncio.subprocess.PIPE
             )
-            # Close the file handle in the parent process immediately
-            log_file.close()
 
             self.processes[stream_id] = process
             self.active_streams[stream_id] = url
@@ -166,14 +157,22 @@ class FFmpegManager:
                     break
                 # Check if process died
                 if process.returncode is not None:
-                     stderr = await process.stderr.read() if process.stderr else b""
-                     logger.error(f"FFmpeg process died unexpectedly. Stderr: {stderr.decode()}")
-                     return None
+                    stderr_data = await process.stderr.read() if process.stderr else b""
+                    error_msg = stderr_data.decode('utf-8', errors='ignore')
+                    logger.error(f"FFmpeg process died. Error: {error_msg}")
+                    # Save to log file
+                    with open(log_file_path, 'w') as f:
+                        f.write(f"Command: {cmd}\n\nError:\n{error_msg}")
+                    return None
                 await asyncio.sleep(0.1)
             
             if not os.path.exists(playlist_path):
+                 # Try to read any output from ffmpeg
+                 if process.stderr:
+                     stderr_data = await asyncio.wait_for(process.stderr.read(), timeout=1.0)
+                     error_msg = stderr_data.decode('utf-8', errors='ignore')
+                     logger.error(f"Timeout. FFmpeg output: {error_msg}")
                  logger.error("Timeout waiting for playlist generation")
-                 # Kill process?
                  try:
                      process.terminate()
                  except: pass
