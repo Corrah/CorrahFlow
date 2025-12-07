@@ -14,9 +14,22 @@ import aiohttp
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
 from aiohttp_proxy import ProxyConnector
 
-from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, get_ssl_setting_for_url, API_PASSWORD, check_password
+from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, get_ssl_setting_for_url, API_PASSWORD, check_password, MPD_MODE
 from extractors.generic import GenericHLSExtractor, ExtractorError
 from services.manifest_rewriter import ManifestRewriter
+
+# Legacy MPD converter (used when MPD_MODE=legacy)
+MPDToHLSConverter = None
+decrypt_segment = None
+if MPD_MODE == "legacy":
+    try:
+        from utils.mpd_converter import MPDToHLSConverter
+        from utils.drm_decrypter import decrypt_segment
+        logger = logging.getLogger(__name__)
+        logger.info("✅ Moduli legacy MPD caricati (mpd_converter, drm_decrypter)")
+    except ImportError as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"⚠️ MPD_MODE=legacy ma moduli non trovati: {e}")
 
 # --- Moduli Esterni ---
 VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
@@ -321,50 +334,54 @@ class HLSProxy:
                     logger.debug("   No h_ params found in query string.")
                     
                 # Stream URL resolved
-                # ✅ FFmpeg Diversion for DASH/MPD
-                if self.ffmpeg_manager and (".mpd" in stream_url or "dash" in stream_url.lower()):
-                     logger.info(f"🔄 Routing MPD stream to FFmpeg: {stream_url}")
-                     
-                     # Extract ClearKey if present
-                     # Check in query params first
-                     clearkey_param = request.query.get('clearkey')
-                     
-                     # Support separate key_id and key params
-                     if not clearkey_param:
-                         key_id = request.query.get('key_id')
-                         key_val = request.query.get('key')
-                         if key_id and key_val:
-                             clearkey_param = f"{key_id}:{key_val}"
-                         elif key_val:
-                             clearkey_param = key_val
-                     
-                     playlist_rel_path = await self.ffmpeg_manager.get_stream(stream_url, stream_headers, clearkey=clearkey_param)
-                     
-                     if playlist_rel_path:
-                         # Construct local URL for the FFmpeg stream
-                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
-                         host = request.headers.get('X-Forwarded-Host', request.host)
-                         local_url = f"{scheme}://{host}/ffmpeg_stream/{playlist_rel_path}"
-                         
-                         # ✅ Generate Master Playlist for better compatibility (Android/ExoPlayer)
-                         master_playlist = (
-                             "#EXTM3U\n"
-                             "#EXT-X-VERSION:3\n"
-                             "#EXT-X-STREAM-INF:BANDWIDTH=6000000,NAME=\"Live\"\n"
-                             f"{local_url}\n"
-                         )
-                         
-                         return web.Response(
-                             text=master_playlist,
-                             content_type="application/vnd.apple.mpegurl",
-                             headers={
-                                 "Access-Control-Allow-Origin": "*",
-                                 "Cache-Control": "no-cache"
-                             }
-                         )
-                     else:
-                         logger.error("❌ FFmpeg failed to start")
-                         return web.Response(text="FFmpeg failed to process stream", status=502)
+                # ✅ MPD/DASH handling based on MPD_MODE
+                if ".mpd" in stream_url or "dash" in stream_url.lower():
+                    if MPD_MODE == "ffmpeg" and self.ffmpeg_manager:
+                        # FFmpeg transcoding mode
+                        logger.info(f"🔄 [FFmpeg Mode] Routing MPD stream: {stream_url}")
+                        
+                        # Extract ClearKey if present
+                        clearkey_param = request.query.get('clearkey')
+                        
+                        # Support separate key_id and key params
+                        if not clearkey_param:
+                            key_id = request.query.get('key_id')
+                            key_val = request.query.get('key')
+                            if key_id and key_val:
+                                clearkey_param = f"{key_id}:{key_val}"
+                            elif key_val:
+                                clearkey_param = key_val
+                        
+                        playlist_rel_path = await self.ffmpeg_manager.get_stream(stream_url, stream_headers, clearkey=clearkey_param)
+                        
+                        if playlist_rel_path:
+                            # Construct local URL for the FFmpeg stream
+                            scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                            host = request.headers.get('X-Forwarded-Host', request.host)
+                            local_url = f"{scheme}://{host}/ffmpeg_stream/{playlist_rel_path}"
+                            
+                            # Generate Master Playlist for compatibility
+                            master_playlist = (
+                                "#EXTM3U\n"
+                                "#EXT-X-VERSION:3\n"
+                                "#EXT-X-STREAM-INF:BANDWIDTH=6000000,NAME=\"Live\"\n"
+                                f"{local_url}\n"
+                            )
+                            
+                            return web.Response(
+                                text=master_playlist,
+                                content_type="application/vnd.apple.mpegurl",
+                                headers={
+                                    "Access-Control-Allow-Origin": "*",
+                                    "Cache-Control": "no-cache"
+                                }
+                            )
+                        else:
+                            logger.error("❌ FFmpeg failed to start")
+                            return web.Response(text="FFmpeg failed to process stream", status=502)
+                    else:
+                        # Legacy mode: fall through to _proxy_stream which handles MPD via manifest proxy
+                        logger.info(f"🔄 [Legacy Mode] Proxying MPD stream: {stream_url}")
                 
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
