@@ -30,7 +30,7 @@
 |------------------------|------------------------|-------------------|
 | HLS, M3U8, MPD, DLHD streams, VIXSRC | Vavoo, DLHD, Sportsonline, VixSrc | Connessioni async e keep-alive |
 | **🔓 DRM Decryption** | **🎬 MPD to HLS** | **🔑 ClearKey Support** |
-| CENC decryption con PyCryptodome | Conversione automatica DASH → HLS | Server-side ClearKey per VLC |
+| ClearKey via FFmpeg transcoding | Conversione automatica DASH → HLS | Server-side ClearKey per VLC |
 
 | 🌐 **Multi-formato** | 🔄 **Retry Logic** | 🚀 **Scalabilità** |
 |--------------------|-------------------|------------------|
