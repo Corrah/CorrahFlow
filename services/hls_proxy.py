@@ -1453,15 +1453,23 @@ class HLSProxy:
 
             init_content = init_content or b""
 
-            # Decripta con PyCryptodome
-            decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
+            # Check if we should skip decryption (null key case)
+            skip_decrypt = request.query.get('skip_decrypt') == '1'
+            
+            if skip_decrypt:
+                # Null key: just concatenate init + segment without decryption
+                logger.info(f"🔓 Skip decrypt mode - remuxing without decryption")
+                combined_content = init_content + segment_content
+            else:
+                # Decripta con PyCryptodome
+                combined_content = decrypt_segment(init_content, segment_content, key_id, key)
 
             # Leggero REMUX to TS
-            ts_content = await self._remux_to_ts(decrypted_content)
+            ts_content = await self._remux_to_ts(combined_content)
             if not ts_content:
                  logger.warning("⚠️ Remux failed, serving raw fMP4")
                  # Fallback: serve fMP4 if remux fails
-                 ts_content = decrypted_content
+                 ts_content = combined_content
                  content_type = 'video/mp4'
             else:
                  content_type = 'video/MP2T'
