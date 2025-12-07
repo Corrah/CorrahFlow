@@ -114,15 +114,12 @@ class FFmpegManager:
         # Decryption Key handling
         if clearkey:
             try:
-                # Format expected: KID:KEY or just KEY? 
-                # FFmpeg -decryption_key expects just the key in hex.
-                # If clearkey param is KID:KEY, we split it.
+                # FFmpeg DASH demuxer uses -decryption_key option
                 if ':' in clearkey:
                     kid, key = clearkey.split(':')
-                    # FFmpeg DASH demuxer uses -cenc_decryption_key
-                    cmd.extend(["-cenc_decryption_key", key])
+                    cmd.extend(["-decryption_key", key])
                 else:
-                    cmd.extend(["-cenc_decryption_key", clearkey])
+                    cmd.extend(["-decryption_key", clearkey])
             except Exception as e:
                 logger.error(f"Error parsing clearkey: {e}")
 
