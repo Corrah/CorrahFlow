@@ -29,4 +29,4 @@ EXPOSE 7860
 
 # Comando per avviare l'app in produzione con Gunicorn
 # Usa sh -c per permettere l'espansione della variabile d'ambiente $PORT
-CMD sh -c "gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 4 --worker-class aiohttp.worker.GunicornWebWorker --timeout 120 --graceful-timeout 120 app:app"
+CMD sh -c "gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 2 --worker-class aiohttp.worker.GunicornWebWorker --timeout 120 --graceful-timeout 120 app:app"
