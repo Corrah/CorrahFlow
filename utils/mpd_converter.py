@@ -220,7 +220,7 @@ class MPDToHLSConverter:
                     if is_live and len(all_segments) > 0:
                         # ✅ FIX LIVE: Includi solo gli ultimi ~30 secondi di segmenti
                         # Questo forza il player a partire dal live edge invece che dall'inizio del DVR
-                        LIVE_WINDOW_SECONDS = 30
+                        LIVE_WINDOW_SECONDS = 300 # Increased to 5 mins for stability
                         total_duration = 0
                         live_segments = []
                         
@@ -257,7 +257,7 @@ class MPDToHLSConverter:
                         if server_side_decryption:
                             # Usa endpoint di decrittazione
                             # Passiamo init_url perché serve per la concatenazione
-                            decrypt_url = f"{proxy_base}/decrypt/segment.mp4?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
+                            decrypt_url = f"{proxy_base}/decrypt/segment.ts?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{params}"
                             lines.append(decrypt_url)
                         else:
                             # Proxy standard
