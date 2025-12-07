@@ -123,8 +123,15 @@ Ottimizzato per:
 ### 📋 Requisiti
 
 - **Python 3.8+**
+- **FFmpeg** (necessario per transcoding MPD streams)
 - **aiohttp**
 - **gunicorn**
+
+> ⚠️ **Nota:** Se non usi Docker, devi installare FFmpeg manualmente:
+> - **Windows**: Scarica da [ffmpeg.org](https://ffmpeg.org/download.html) e aggiungi al PATH
+> - **Linux/Debian**: `sudo apt install ffmpeg`
+> - **macOS**: `brew install ffmpeg`
+> - **Termux**: `pkg install ffmpeg`
 
 ### 🔧 Installazione Completa
 
@@ -144,7 +151,7 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 
 ```bash
 pkg update && pkg upgrade
-pkg install python git -y
+pkg install python git ffmpeg -y
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
 pip install -r requirements.txt
