@@ -128,26 +128,25 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- SIMPLIFIED TRANSCODE for reliability ---
+            # --- FAST TRANSCODE for low buffering ---
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
-            "-crf", "23",
-            "-g", "50",
-            "-profile:v", "main",
-            "-level", "4.0",
-            # --- AUDIO: Simple settings ---
+            "-crf", "28",  # Higher = faster encoding, lower quality
+            "-g", "30",  # Keyframe every ~1 second
+            "-profile:v", "baseline",  # Fastest profile
+            # --- AUDIO ---
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "96k",  # Lower bitrate
             "-ac", "2",
-            "-ar", "48000",
+            "-ar", "44100",  # Lower sample rate
             "-bsf:v", "h264_mp4toannexb",
-            # --- Basic timestamp fixes ---
+            # --- Timestamp fixes ---
             "-avoid_negative_ts", "make_zero",
-            "-max_muxing_queue_size", "4096",
+            "-max_muxing_queue_size", "2048",
             "-f", "hls",
-            "-hls_time", "4",
-            "-hls_list_size", "20",
+            "-hls_time", "2",  # Shorter segments
+            "-hls_list_size", "15",
             "-hls_flags", "delete_segments+independent_segments",
             "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
             playlist_path
