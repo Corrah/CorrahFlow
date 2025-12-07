@@ -36,6 +36,10 @@ class ManifestRewriter:
                 header_params += f"&api_password={api_password}"
 
             def create_proxy_url(relative_url):
+                # Skip proxying if URL contains DASH template variables - player must resolve these
+                if '$' in relative_url:
+                    # Just make it absolute without proxying
+                    return urljoin(base_url, relative_url)
                 absolute_url = urljoin(base_url, relative_url)
                 encoded_url = urllib.parse.quote(absolute_url, safe='')
                 return f"{proxy_base}/proxy/mpd/manifest.m3u8?d={encoded_url}{header_params}"
