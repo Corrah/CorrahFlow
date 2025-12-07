@@ -162,26 +162,29 @@ class FFmpegManager:
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=log_file
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            # Close the file handle in the parent process immediately
-            log_file.close()
 
             self.processes[stream_id] = process
             self.active_streams[stream_id] = url
             
-            # Wait a bit for the playlist to appear
-            # Initial segment generation might take time
-            for _ in range(150): # Wait up to 15 seconds
+            # Wait for the playlist to appear (up to 30 seconds)
+            for _ in range(300):  # Wait up to 30 seconds
                 if os.path.exists(playlist_path):
+                    log_file.close()
                     break
                 # Check if process died
                 if process.returncode is not None:
-                     stderr = await process.stderr.read() if process.stderr else b""
-                     logger.error(f"FFmpeg process died unexpectedly. Stderr: {stderr.decode()}")
-                     return None
+                    stdout, stderr = await process.communicate()
+                    log_file.write(f"STDERR: {stderr.decode()}\n")
+                    log_file.write(f"STDOUT: {stdout.decode()}\n")
+                    log_file.close()
+                    logger.error(f"FFmpeg process died. Stderr: {stderr.decode()[:500]}")
+                    return None
                 await asyncio.sleep(0.1)
+            else:
+                log_file.close()
             
             if not os.path.exists(playlist_path):
                  logger.error("Timeout waiting for playlist generation")
