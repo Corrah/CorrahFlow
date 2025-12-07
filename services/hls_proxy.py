@@ -16,8 +16,6 @@ from aiohttp_proxy import ProxyConnector
 
 from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, get_ssl_setting_for_url, API_PASSWORD, check_password
 from extractors.generic import GenericHLSExtractor, ExtractorError
-from utils.mpd_converter import MPDToHLSConverter
-from utils.drm_decrypter import decrypt_segment
 from services.manifest_rewriter import ManifestRewriter
 
 # --- Moduli Esterni ---
@@ -90,8 +88,9 @@ except ImportError:
 class HLSProxy:
     """Proxy HLS per gestire stream Vavoo, DLHD, HLS generici e playlist builder con supporto AES-128"""
     
-    def __init__(self):
+    def __init__(self, ffmpeg_manager=None):
         self.extractors = {}
+        self.ffmpeg_manager = ffmpeg_manager
         
         # Inizializza il playlist_builder se il modulo è disponibile
         if PlaylistBuilder:
@@ -99,9 +98,6 @@ class HLSProxy:
             logger.info("✅ PlaylistBuilder inizializzato")
         else:
             self.playlist_builder = None
-            
-        # Inizializza il convertitore MPD -> HLS
-        self.mpd_converter = MPDToHLSConverter()
         
         # Cache per segmenti di inizializzazione (URL -> content)
         self.init_cache = {}
@@ -325,6 +321,51 @@ class HLSProxy:
                     logger.debug("   No h_ params found in query string.")
                     
                 # Stream URL resolved
+                # ✅ FFmpeg Diversion for DASH/MPD
+                if self.ffmpeg_manager and (".mpd" in stream_url or "dash" in stream_url.lower()):
+                     logger.info(f"🔄 Routing MPD stream to FFmpeg: {stream_url}")
+                     
+                     # Extract ClearKey if present
+                     # Check in query params first
+                     clearkey_param = request.query.get('clearkey')
+                     
+                     # Support separate key_id and key params
+                     if not clearkey_param:
+                         key_id = request.query.get('key_id')
+                         key_val = request.query.get('key')
+                         if key_id and key_val:
+                             clearkey_param = f"{key_id}:{key_val}"
+                         elif key_val:
+                             clearkey_param = key_val
+                     
+                     playlist_rel_path = await self.ffmpeg_manager.get_stream(stream_url, stream_headers, clearkey=clearkey_param)
+                     
+                     if playlist_rel_path:
+                         # Construct local URL for the FFmpeg stream
+                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                         host = request.headers.get('X-Forwarded-Host', request.host)
+                         local_url = f"{scheme}://{host}/ffmpeg_stream/{playlist_rel_path}"
+                         
+                         # ✅ Generate Master Playlist for better compatibility (Android/ExoPlayer)
+                         master_playlist = (
+                             "#EXTM3U\n"
+                             "#EXT-X-VERSION:3\n"
+                             "#EXT-X-STREAM-INF:BANDWIDTH=6000000,NAME=\"Live\"\n"
+                             f"{local_url}\n"
+                         )
+                         
+                         return web.Response(
+                             text=master_playlist,
+                             content_type="application/vnd.apple.mpegurl",
+                             headers={
+                                 "Access-Control-Allow-Origin": "*",
+                                 "Cache-Control": "no-cache"
+                             }
+                         )
+                     else:
+                         logger.error("❌ FFmpeg failed to start")
+                         return web.Response(text="FFmpeg failed to process stream", status=502)
+                
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
                 logger.warning(f"Estrazione fallita, tento di nuovo forzando l'aggiornamento: {e}")
@@ -796,6 +837,18 @@ class HLSProxy:
                     content_type = resp.headers.get('content-type', '')
                     
                     print(f"   Upstream Response: {resp.status} [{content_type}]")
+
+                    # ✅ FIX: Se la risposta non è OK, restituisci direttamente l'errore senza processare
+                    if resp.status not in [200, 206]:
+                        logger.warning(f"⚠️ Upstream returned error {resp.status} for {stream_url}")
+                        return web.Response(
+                            body=await resp.read(),
+                            status=resp.status,
+                            headers={
+                                'Content-Type': content_type,
+                                'Access-Control-Allow-Origin': '*'
+                            }
+                        )
                     
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
@@ -844,49 +897,6 @@ class HLSProxy:
 
                         req_format = request.query.get('format')
                         rep_id = request.query.get('rep_id')
-                        
-                        # --- CONVERSIONE MPD -> HLS ---
-                        if req_format == 'hls' or (request.path.endswith('.m3u8') and req_format != 'mpd'):
-                            
-                            # Costruiamo i parametri da passare ai sottolink
-                            params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
-                            
-                            # ✅ FIX: Propagate api_password
-                            api_password = request.query.get('api_password')
-                            if api_password:
-                                params += f"&api_password={api_password}"
-
-                            if clearkey_param:
-                                params += f"&clearkey={clearkey_param}"
-                            
-                            if rep_id:
-                                # Genera Media Playlist per la variante specifica
-                                hls_content = self.mpd_converter.convert_media_playlist(
-                                    manifest_content, rep_id, proxy_base, stream_url, params, clearkey_param
-                                )
-                                return web.Response(
-                                    text=hls_content,
-                                    headers={
-                                        'Content-Type': 'application/vnd.apple.mpegurl',
-                                        'Content-Disposition': 'attachment; filename="playlist.m3u8"',
-                                        'Access-Control-Allow-Origin': '*',
-                                        'Cache-Control': 'no-cache'
-                                    }
-                                )
-                            else:
-                                # Genera Master Playlist
-                                hls_content = self.mpd_converter.convert_master_playlist(
-                                    manifest_content, proxy_base, stream_url, params
-                                )
-                                return web.Response(
-                                    text=hls_content,
-                                    headers={
-                                        'Content-Type': 'application/vnd.apple.mpegurl',
-                                        'Content-Disposition': 'attachment; filename="master.m3u8"',
-                                        'Access-Control-Allow-Origin': '*',
-                                        'Cache-Control': 'no-cache'
-                                    }
-                                )
 
                         # --- MPD REWRITING (DASH NATIVO) ---
                         api_password = request.query.get('api_password')
@@ -1102,71 +1112,6 @@ class HLSProxy:
             }
         }
         return web.json_response(info)
-
-    async def handle_decrypt_segment(self, request):
-        """✅ Decritta segmenti fMP4 lato server usando Python (PyCryptodome)."""
-        if not check_password(request):
-            return web.Response(status=401, text="Unauthorized: Invalid API Password")
-
-        url = request.query.get('url')
-        init_url = request.query.get('init_url')
-        key = request.query.get('key')
-        key_id = request.query.get('key_id')
-        
-        if not url or not key or not key_id:
-            return web.Response(text="Missing url, key, or key_id", status=400)
-
-        try:
-            # Ricostruisce gli headers per le richieste upstream
-            headers = {}
-            for param_name, param_value in request.query.items():
-                if param_name.startswith('h_'):
-                    header_name = param_name[2:].replace('_', '-')
-                    headers[header_name] = param_value
-
-            session = await self._get_session()
-
-            # --- 1. Scarica Initialization Segment (con cache) ---
-            init_content = b""
-            if init_url:
-                if init_url in self.init_cache:
-                    init_content = self.init_cache[init_url]
-                else:
-                    # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
-                    disable_ssl_init = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
-                    async with session.get(init_url, headers=headers, ssl=not disable_ssl_init) as resp:
-                        if resp.status == 200:
-                            init_content = await resp.read()
-                            self.init_cache[init_url] = init_content
-                        else:
-                            logger.error(f"❌ Failed to fetch init segment: {resp.status}")
-                            return web.Response(status=502)
-
-            # --- 2. Scarica Media Segment ---
-            # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
-            disable_ssl_media = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
-            async with session.get(url, headers=headers, ssl=not disable_ssl_media) as resp:
-                if resp.status != 200:
-                    logger.error(f"❌ Failed to fetch segment: {resp.status}")
-                    return web.Response(status=502)
-                
-                segment_content = await resp.read()
-
-            # --- 3. Decritta con Python (PyCryptodome) ---
-            decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
-
-            # --- 4. Invia Risposta ---
-            return web.Response(
-                body=decrypted_content,
-                status=200,
-                headers={'Content-Type': 'video/mp4', 'Access-Control-Allow-Origin': '*'}
-            )
-
-        except Exception as e:
-            logger.error(f"❌ Decryption error: {e}")
-            import traceback
-            traceback.print_exc()
-            return web.Response(status=500, text=f"Decryption failed: {str(e)}")
 
     async def handle_generate_urls(self, request):
         """
