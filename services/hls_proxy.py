@@ -995,10 +995,23 @@ class HLSProxy:
                             logger.info(f"🔄 [Legacy Mode] Converting MPD to HLS for {stream_url}")
                             try:
                                 converter = MPDToHLSConverter()
-                                # Passa query string originale come params per i segmenti
-                                hls_playlist = converter.convert_master_playlist(
-                                    manifest_content, proxy_base, stream_url, request.query_string
-                                )
+                                
+                                # Check if requesting a Media Playlist (Variant)
+                                rep_id = request.query.get('rep_id')
+                                
+                                if rep_id:
+                                    # Generate Media Playlist (Segments)
+                                    hls_playlist = converter.convert_media_playlist(
+                                        manifest_content, rep_id, proxy_base, stream_url, request.query_string, clearkey_param
+                                    )
+                                    # Log first few lines for debugging
+                                    logger.info(f"📜 Generated Media Playlist for {rep_id} (first 10 lines):\n{chr(10).join(hls_playlist.splitlines()[:10])}")
+                                else:
+                                    # Generate Master Playlist
+                                    hls_playlist = converter.convert_master_playlist(
+                                        manifest_content, proxy_base, stream_url, request.query_string
+                                    )
+                                    logger.info(f"📜 Generated Master Playlist (first 5 lines):\n{chr(10).join(hls_playlist.splitlines()[:5])}")
                                 
                                 return web.Response(
                                     text=hls_playlist,
@@ -1317,6 +1330,39 @@ class HLSProxy:
             if cache_key in self.prefetch_tasks:
                 self.prefetch_tasks.remove(cache_key)
 
+    async def _remux_to_ts(self, content):
+        """Converte segmenti (fMP4) in MPEG-TS usando FFmpeg pipe."""
+        try:
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', 'pipe:0',
+                '-c', 'copy',
+                '-copyts',                      # Preserve timestamps to prevent freezing/gap issues
+                '-bsf:v', 'h264_mp4toannexb',   # Ensure video is Annex B (MPEG-TS requirement)
+                '-bsf:a', 'aac_adtstoasc',      # Ensure audio is ADTS (MPEG-TS requirement)
+                '-f', 'mpegts',
+                'pipe:1'
+            ]
+            
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await proc.communicate(input=content)
+            
+            if proc.returncode != 0:
+                logger.error(f"❌ FFmpeg remux failed: {stderr.decode()}")
+                return None
+                
+            return stdout
+        except Exception as e:
+            logger.error(f"❌ Remux error: {e}")
+            return None
+
     async def handle_decrypt_segment(self, request):
         """Decripta segmenti fMP4 lato server per ClearKey (legacy mode)."""
         if not check_password(request):
@@ -1337,7 +1383,7 @@ class HLSProxy:
 
         # Check cache first
         import time
-        cache_key = f"{url}:{key_id}"
+        cache_key = f"{url}:{key_id}:ts" # Use distinct cache key for TS
         if cache_key in self.segment_cache:
             cached_content, cached_time = self.segment_cache[cache_key]
             if time.time() - cached_time < self.segment_cache_ttl:
@@ -1346,7 +1392,7 @@ class HLSProxy:
                     body=cached_content,
                     status=200,
                     headers={
-                        'Content-Type': 'video/mp4',
+                        'Content-Type': 'video/MP2T',
                         'Access-Control-Allow-Origin': '*',
                         'Cache-Control': 'no-cache',
                         'Connection': 'keep-alive'
@@ -1404,8 +1450,19 @@ class HLSProxy:
             # Decripta con PyCryptodome
             decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
 
+            # Leggero REMUX to TS
+            ts_content = await self._remux_to_ts(decrypted_content)
+            if not ts_content:
+                 logger.warning("⚠️ Remux failed, serving raw fMP4")
+                 # Fallback: serve fMP4 if remux fails
+                 ts_content = decrypted_content
+                 content_type = 'video/mp4'
+            else:
+                 content_type = 'video/MP2T'
+                 logger.info("⚡ Remuxed fMP4 -> TS")
+
             # Store in cache
-            self.segment_cache[cache_key] = (decrypted_content, time.time())
+            self.segment_cache[cache_key] = (ts_content, time.time())
             
             # Clean old cache entries (keep max 50)
             if len(self.segment_cache) > 50:
@@ -1418,10 +1475,10 @@ class HLSProxy:
 
             # Invia Risposta
             return web.Response(
-                body=decrypted_content,
+                body=ts_content,
                 status=200,
                 headers={
-                    'Content-Type': 'video/mp4',
+                    'Content-Type': content_type,
                     'Access-Control-Allow-Origin': '*',
                     'Cache-Control': 'no-cache',
                     'Connection': 'keep-alive'
