@@ -120,7 +120,17 @@ class HLSProxy:
 
     async def _get_session(self):
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(timeout=ClientTimeout(total=30))
+            # Optimized connector with larger pool for concurrent segment downloads
+            connector = TCPConnector(
+                limit=100,  # Max total connections
+                limit_per_host=30,  # Max per host
+                keepalive_timeout=60,  # Keep connections alive longer
+                enable_cleanup_closed=True
+            )
+            self.session = aiohttp.ClientSession(
+                timeout=ClientTimeout(total=30),
+                connector=connector
+            )
         return self.session
 
     async def get_extractor(self, url: str, request_headers: dict, host: str = None):
@@ -1209,7 +1219,10 @@ class HLSProxy:
 
         try:
             # Ricostruisce gli headers per le richieste upstream
-            headers = {}
+            headers = {
+                'Connection': 'keep-alive',
+                'Accept-Encoding': 'identity'  # No compression for speed
+            }
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
                     header_name = param_name[2:].replace('_', '-')
@@ -1217,44 +1230,56 @@ class HLSProxy:
 
             session = await self._get_session()
 
-            # 1. Scarica Initialization Segment (con cache)
-            init_content = b""
-            if init_url:
+            # Parallel download of init and media segment
+            async def fetch_init():
+                if not init_url:
+                    return b""
                 if init_url in self.init_cache:
-                    init_content = self.init_cache[init_url]
-                else:
-                    disable_ssl_init = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
-                    async with session.get(init_url, headers=headers, ssl=not disable_ssl_init) as resp:
-                        if resp.status == 200:
-                            init_content = await resp.read()
-                            self.init_cache[init_url] = init_content
-                        else:
-                            logger.error(f"❌ Failed to fetch init segment: {resp.status}")
-                            return web.Response(status=502)
+                    return self.init_cache[init_url]
+                disable_ssl = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
+                async with session.get(init_url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        content = await resp.read()
+                        self.init_cache[init_url] = content
+                        return content
+                    return None
 
-            # 2. Scarica Media Segment
-            disable_ssl_media = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
-            async with session.get(url, headers=headers, ssl=not disable_ssl_media) as resp:
-                if resp.status != 200:
-                    logger.error(f"❌ Failed to fetch segment: {resp.status}")
-                    return web.Response(status=502)
-                
-                segment_content = await resp.read()
+            async def fetch_segment():
+                disable_ssl = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
+                async with session.get(url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+                    return None
 
-            # 3. Decripta con PyCryptodome
+            # Parallel fetch
+            init_content, segment_content = await asyncio.gather(fetch_init(), fetch_segment())
+            
+            if init_content is None and init_url:
+                logger.error(f"❌ Failed to fetch init segment")
+                return web.Response(status=502)
+            if segment_content is None:
+                logger.error(f"❌ Failed to fetch segment")
+                return web.Response(status=502)
+
+            init_content = init_content or b""
+
+            # Decripta con PyCryptodome
             decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
 
-            # 4. Invia Risposta
+            # Invia Risposta con headers ottimizzati
             return web.Response(
                 body=decrypted_content,
                 status=200,
-                headers={'Content-Type': 'video/mp4', 'Access-Control-Allow-Origin': '*'}
+                headers={
+                    'Content-Type': 'video/mp4',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive'
+                }
             )
 
         except Exception as e:
             logger.error(f"❌ Decryption error: {e}")
-            import traceback
-            traceback.print_exc()
             return web.Response(status=500, text=f"Decryption failed: {str(e)}")
 
     async def handle_generate_urls(self, request):
