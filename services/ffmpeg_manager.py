@@ -128,32 +128,27 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- OPTIMIZED TRANSCODE for smooth VLC Android playback ---
+            # --- SIMPLIFIED TRANSCODE for reliability ---
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
             "-crf", "23",
             "-g", "50",
-            "-sc_threshold", "0",
             "-profile:v", "main",
             "-level", "4.0",
-            # --- AUDIO: Fixed sync with explicit settings ---
+            # --- AUDIO: Simple settings ---
             "-c:a", "aac",
             "-b:a", "128k",
-            "-ac", "2",  # Force stereo
-            "-ar", "48000",  # Force 48kHz sample rate
-            "-af", "aresample=async=1000:first_pts=0",  # Proper audio sync filter
+            "-ac", "2",
+            "-ar", "48000",
             "-bsf:v", "h264_mp4toannexb",
-            # --- Timestamp fixes ---
-            "-vsync", "cfr",
-            "-r", "25",
+            # --- Basic timestamp fixes ---
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "4096",
             "-f", "hls",
-            "-hls_time", "2",
-            "-hls_list_size", "30",
-            "-hls_init_time", "0",
-            "-hls_flags", "delete_segments+independent_segments+split_by_time",
+            "-hls_time", "4",
+            "-hls_list_size", "20",
+            "-hls_flags", "delete_segments+independent_segments",
             "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
             playlist_path
         ])
