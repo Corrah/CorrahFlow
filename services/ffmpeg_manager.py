@@ -100,7 +100,7 @@ class FFmpegManager:
         cmd = [
             "ffmpeg",
             "-hide_banner",
-            "-loglevel", "warning",  # Changed to warning to catch issues
+            "-loglevel", "verbose",  # Maximum verbosity for debugging
             # --- CRITICAL: Timestamp and sync fixes ---
             "-fflags", "+genpts+discardcorrupt+igndts",  # Regenerate PTS, discard corrupt, ignore DTS
             "-analyzeduration", "10000000",  # 10s analyze for proper stream detection
@@ -144,8 +144,8 @@ class FFmpegManager:
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE
+                stdout=asyncio.subprocess.PIPE,  # Capture stdout too
+                stderr=asyncio.subprocess.STDOUT  # Merge stderr into stdout
             )
 
             self.processes[stream_id] = process
@@ -158,21 +158,23 @@ class FFmpegManager:
                     break
                 # Check if process died
                 if process.returncode is not None:
-                    stderr_data = await process.stderr.read() if process.stderr else b""
-                    error_msg = stderr_data.decode('utf-8', errors='ignore')
-                    logger.error(f"FFmpeg process died. Error: {error_msg}")
+                    output_data = await process.stdout.read() if process.stdout else b""
+                    error_msg = output_data.decode('utf-8', errors='ignore')
+                    logger.error(f"FFmpeg process died. Output: {error_msg}")
                     # Save to log file
                     with open(log_file_path, 'w') as f:
-                        f.write(f"Command: {cmd}\n\nError:\n{error_msg}")
+                        f.write(f"Command: {cmd}\n\nOutput:\n{error_msg}")
                     return None
                 await asyncio.sleep(0.1)
             
             if not os.path.exists(playlist_path):
                  # Try to read any output from ffmpeg
-                 if process.stderr:
-                     stderr_data = await asyncio.wait_for(process.stderr.read(), timeout=1.0)
-                     error_msg = stderr_data.decode('utf-8', errors='ignore')
-                     logger.error(f"Timeout. FFmpeg output: {error_msg}")
+                 if process.stdout:
+                     try:
+                         output_data = await asyncio.wait_for(process.stdout.read(), timeout=1.0)
+                         error_msg = output_data.decode('utf-8', errors='ignore')
+                         logger.error(f"Timeout. FFmpeg output: {error_msg}")
+                     except: pass
                  logger.error("Timeout waiting for playlist generation")
                  try:
                      process.terminate()
