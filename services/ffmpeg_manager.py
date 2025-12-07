@@ -187,15 +187,12 @@ class FFmpegManager:
             
             if not os.path.exists(playlist_path):
                  logger.error("Timeout waiting for playlist generation")
+                 # Kill process?
                  try:
                      process.terminate()
                  except: pass
                  return None
-            
-            # Wait extra time to build buffer (10 seconds = ~5 segments)
-            logger.info(f"Building 10s buffer for stream {stream_id}...")
-            await asyncio.sleep(10)
-            
+                
             return f"{stream_id}/index.m3u8"
             
         except Exception as e:
