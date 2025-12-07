@@ -128,24 +128,25 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- FAST TRANSCODE for low buffering ---
+            # --- 720p TRANSCODE for low CPU usage ---
+            "-vf", "scale=-2:720",  # Scale to 720p max height, keep aspect ratio
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
-            "-crf", "28",  # Higher = faster encoding, lower quality
-            "-g", "30",  # Keyframe every ~1 second
-            "-profile:v", "baseline",  # Fastest profile
+            "-crf", "28",
+            "-g", "30",
+            "-profile:v", "baseline",
             # --- AUDIO ---
             "-c:a", "aac",
-            "-b:a", "96k",  # Lower bitrate
+            "-b:a", "96k",
             "-ac", "2",
-            "-ar", "44100",  # Lower sample rate
+            "-ar", "44100",
             "-bsf:v", "h264_mp4toannexb",
             # --- Timestamp fixes ---
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "2048",
             "-f", "hls",
-            "-hls_time", "2",  # Shorter segments
+            "-hls_time", "2",
             "-hls_list_size", "15",
             "-hls_flags", "delete_segments+independent_segments",
             "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
