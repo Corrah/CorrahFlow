@@ -94,13 +94,12 @@ class FFmpegManager:
         headers_str = ""
         if headers:
             valid_headers = {k: v for k, v in headers.items() if k.lower() not in ['host', 'connection', 'accept-encoding']}
-            # FFmpeg requires headers to end with \r\n
-            headers_str = "\r\n".join([f"{k}: {v}" for k, v in valid_headers.items()]) + "\r\n"
+            headers_str = "\r\n".join([f"{k}: {v}" for k, v in valid_headers.items()])
         
         cmd = [
             "ffmpeg",
             "-hide_banner",
-            "-loglevel", "verbose",  # Maximum verbosity for debugging
+            "-loglevel", "warning",  # Changed to warning to catch issues
             # --- CRITICAL: Timestamp and sync fixes ---
             "-fflags", "+genpts+discardcorrupt+igndts",  # Regenerate PTS, discard corrupt, ignore DTS
             "-analyzeduration", "10000000",  # 10s analyze for proper stream detection
@@ -112,72 +111,86 @@ class FFmpegManager:
             "-headers", headers_str,
         ]
         
-        # Decryption Key handling - DISABLED: Standard FFmpeg may not support CENC
-        # For CENC support, need FFmpeg compiled with libavcodec CENC decoder
+        # Decryption Key handling
         if clearkey:
-            logger.warning(f"ClearKey provided but CENC decryption disabled for compatibility: {clearkey}")
-            # Decryption won't work - stream will be encrypted
-            pass
+            try:
+                # Format expected: KID:KEY or just KEY? 
+                # FFmpeg -decryption_key expects just the key in hex.
+                # If clearkey param is KID:KEY, we split it.
+                if ':' in clearkey:
+                    kid, key = clearkey.split(':')
+                    # FFmpeg DASH demuxer uses -cenc_decryption_key
+                    cmd.extend(["-cenc_decryption_key", key])
+                else:
+                    cmd.extend(["-cenc_decryption_key", clearkey])
+            except Exception as e:
+                logger.error(f"Error parsing clearkey: {e}")
 
         cmd.extend([
             "-i", url,
-            # --- SIMPLE COPY MODE ---
-            "-c:v", "copy",
-            "-c:a", "copy",
-            # NOTE: No bitstream filter - crashes on encrypted content
+            # --- OPTIMIZED TRANSCODE for smooth VLC Android playback ---
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-crf", "23",
+            "-g", "50",
+            "-sc_threshold", "0",
+            "-profile:v", "main",
+            "-level", "4.0",
+            # --- AUDIO: Fixed sync with explicit settings ---
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ac", "2",  # Force stereo
+            "-ar", "48000",  # Force 48kHz sample rate
+            "-af", "aresample=async=1000:first_pts=0",  # Proper audio sync filter
+            "-bsf:v", "h264_mp4toannexb",
             # --- Timestamp fixes ---
+            "-vsync", "cfr",
+            "-r", "25",
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "4096",
             "-f", "hls",
-            "-hls_time", "4",
-            "-hls_list_size", "20",
+            "-hls_time", "2",
+            "-hls_list_size", "30",
             "-hls_init_time", "0",
-            "-hls_segment_type", "fmp4",  # fMP4 segments for CMAF compatibility
-            "-hls_flags", "delete_segments+independent_segments",
-            "-hls_fmp4_init_filename", "init.mp4",
-            "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.m4s"),
+            "-hls_flags", "delete_segments+independent_segments+split_by_time",
+            "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
             playlist_path
         ])
         
         logger.info(f"Starting FFmpeg for {stream_id} with key: {clearkey}")
         logger.info(f"Command: {cmd}")
         
-        log_file_path = os.path.join(stream_dir, "ffmpeg.log")
+        log_file = open(os.path.join(stream_dir, "ffmpeg.log"), "w")
+        log_file.write(f"Command: {cmd}\n\n")
+        log_file.flush()
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE,  # Capture stdout too
-                stderr=asyncio.subprocess.STDOUT  # Merge stderr into stdout
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=log_file
             )
+            # Close the file handle in the parent process immediately
+            log_file.close()
 
             self.processes[stream_id] = process
             self.active_streams[stream_id] = url
             
             # Wait a bit for the playlist to appear
             # Initial segment generation might take time
-            for _ in range(300): # Wait up to 30 seconds
+            for _ in range(150): # Wait up to 15 seconds
                 if os.path.exists(playlist_path):
                     break
                 # Check if process died
                 if process.returncode is not None:
-                    output_data = await process.stdout.read() if process.stdout else b""
-                    error_msg = output_data.decode('utf-8', errors='ignore')
-                    logger.error(f"FFmpeg process died. Output: {error_msg}")
-                    # Save to log file
-                    with open(log_file_path, 'w') as f:
-                        f.write(f"Command: {cmd}\n\nOutput:\n{error_msg}")
-                    return None
+                     stderr = await process.stderr.read() if process.stderr else b""
+                     logger.error(f"FFmpeg process died unexpectedly. Stderr: {stderr.decode()}")
+                     return None
                 await asyncio.sleep(0.1)
             
             if not os.path.exists(playlist_path):
-                 # Try to read any output from ffmpeg
-                 if process.stdout:
-                     try:
-                         output_data = await asyncio.wait_for(process.stdout.read(), timeout=1.0)
-                         error_msg = output_data.decode('utf-8', errors='ignore')
-                         logger.error(f"Timeout. FFmpeg output: {error_msg}")
-                     except: pass
                  logger.error("Timeout waiting for playlist generation")
+                 # Kill process?
                  try:
                      process.terminate()
                  except: pass
