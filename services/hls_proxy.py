@@ -1354,6 +1354,12 @@ class HLSProxy:
             
             stdout, stderr = await proc.communicate(input=content)
             
+            # Check for data presence regardless of return code (workaround for asyncio race condition on some platforms)
+            if len(stdout) > 0:
+                if proc.returncode != 0:
+                    logger.warning(f"⚠️ FFmpeg remux finished with code {proc.returncode} but produced output (ignoring error). Stderr: {stderr.decode()[:200]}")
+                return stdout
+            
             if proc.returncode != 0:
                 logger.error(f"❌ FFmpeg remux failed: {stderr.decode()}")
                 return None
