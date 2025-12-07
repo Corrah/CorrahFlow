@@ -121,10 +121,10 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- SIMPLE COPY MODE (Docker slim compatible) ---
+            # --- SIMPLE COPY MODE ---
             "-c:v", "copy",
             "-c:a", "copy",
-            "-bsf:v", "h264_mp4toannexb",
+            # NOTE: No bitstream filter - crashes on encrypted content
             # --- Timestamp fixes ---
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "4096",
@@ -132,8 +132,10 @@ class FFmpegManager:
             "-hls_time", "4",
             "-hls_list_size", "20",
             "-hls_init_time", "0",
+            "-hls_segment_type", "fmp4",  # fMP4 segments for CMAF compatibility
             "-hls_flags", "delete_segments+independent_segments",
-            "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
+            "-hls_fmp4_init_filename", "init.mp4",
+            "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.m4s"),
             playlist_path
         ])
         
