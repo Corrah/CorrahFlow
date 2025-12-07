@@ -207,9 +207,9 @@ class FFmpegManager:
                 to_remove = []
                 
                 for stream_id, last_access in list(self.access_times.items()):
-                    # Timeout after 30 seconds of inactivity
-                    if now - last_access > 30:
-                        logger.info(f"Stream {stream_id} idle for 30s. Terminating.")
+                    # Timeout after 2 minutes of inactivity
+                    if now - last_access > 120:
+                        logger.info(f"Stream {stream_id} idle for 120s. Terminating.")
                         to_remove.append(stream_id)
                 
                 for stream_id in to_remove:
