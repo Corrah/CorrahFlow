@@ -128,32 +128,23 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- OPTIMIZED TRANSCODE for smooth VLC Android playback ---
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "zerolatency",
-            "-crf", "23",
-            "-g", "50",
-            "-sc_threshold", "0",
-            "-profile:v", "main",
-            "-level", "4.0",
-            # --- AUDIO: Fixed sync with explicit settings ---
+            # --- VIDEO: Copy mode for speed (Docker compatible) ---
+            "-c:v", "copy",
+            "-bsf:v", "h264_mp4toannexb",
+            # --- AUDIO: Re-encode for sync fix ---
             "-c:a", "aac",
             "-b:a", "128k",
-            "-ac", "2",  # Force stereo
-            "-ar", "48000",  # Force 48kHz sample rate
-            "-af", "aresample=async=1000:first_pts=0",  # Proper audio sync filter
-            "-bsf:v", "h264_mp4toannexb",
+            "-ac", "2",
+            "-ar", "48000",
+            "-af", "aresample=async=1000:first_pts=0",
             # --- Timestamp fixes ---
-            "-vsync", "cfr",
-            "-r", "25",
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "4096",
             "-f", "hls",
-            "-hls_time", "2",
-            "-hls_list_size", "30",
+            "-hls_time", "4",
+            "-hls_list_size", "20",
             "-hls_init_time", "0",
-            "-hls_flags", "delete_segments+independent_segments+split_by_time",
+            "-hls_flags", "delete_segments+independent_segments",
             "-hls_segment_filename", os.path.join(stream_dir, "segment_%03d.ts"),
             playlist_path
         ])
@@ -178,7 +169,7 @@ class FFmpegManager:
             
             # Wait a bit for the playlist to appear
             # Initial segment generation might take time
-            for _ in range(150): # Wait up to 15 seconds
+            for _ in range(300): # Wait up to 30 seconds
                 if os.path.exists(playlist_path):
                     break
                 # Check if process died
