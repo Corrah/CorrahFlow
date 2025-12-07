@@ -129,6 +129,7 @@ class FFmpegManager:
         cmd.extend([
             "-i", url,
             # --- 720p TRANSCODE for low CPU usage ---
+            "-threads", "0",  # Use all CPU cores
             "-vf", "scale=-2:720",  # Scale to 720p max height, keep aspect ratio
             "-c:v", "libx264",
             "-preset", "ultrafast",
