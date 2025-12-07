@@ -128,15 +128,10 @@ class FFmpegManager:
 
         cmd.extend([
             "-i", url,
-            # --- VIDEO: Copy mode for speed (Docker compatible) ---
+            # --- SIMPLE COPY MODE (Docker slim compatible) ---
             "-c:v", "copy",
+            "-c:a", "copy",
             "-bsf:v", "h264_mp4toannexb",
-            # --- AUDIO: Re-encode for sync fix ---
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ac", "2",
-            "-ar", "48000",
-            "-af", "aresample=async=1000:first_pts=0",
             # --- Timestamp fixes ---
             "-avoid_negative_ts", "make_zero",
             "-max_muxing_queue_size", "4096",
