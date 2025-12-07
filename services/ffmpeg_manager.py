@@ -94,7 +94,8 @@ class FFmpegManager:
         headers_str = ""
         if headers:
             valid_headers = {k: v for k, v in headers.items() if k.lower() not in ['host', 'connection', 'accept-encoding']}
-            headers_str = "\r\n".join([f"{k}: {v}" for k, v in valid_headers.items()])
+            # FFmpeg requires headers to end with \r\n
+            headers_str = "\r\n".join([f"{k}: {v}" for k, v in valid_headers.items()]) + "\r\n"
         
         cmd = [
             "ffmpeg",
