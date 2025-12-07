@@ -1130,6 +1130,72 @@ class HLSProxy:
         }
         return web.json_response(info)
 
+    async def handle_decrypt_segment(self, request):
+        """Decripta segmenti fMP4 lato server per ClearKey (legacy mode)."""
+        if not check_password(request):
+            return web.Response(status=401, text="Unauthorized: Invalid API Password")
+
+        url = request.query.get('url')
+        init_url = request.query.get('init_url')
+        key = request.query.get('key')
+        key_id = request.query.get('key_id')
+        
+        if not url or not key or not key_id:
+            return web.Response(text="Missing url, key, or key_id", status=400)
+
+        if decrypt_segment is None:
+            return web.Response(text="Decrypt not available (MPD_MODE is not legacy)", status=503)
+
+        try:
+            # Ricostruisce gli headers per le richieste upstream
+            headers = {}
+            for param_name, param_value in request.query.items():
+                if param_name.startswith('h_'):
+                    header_name = param_name[2:].replace('_', '-')
+                    headers[header_name] = param_value
+
+            session = await self._get_session()
+
+            # 1. Scarica Initialization Segment (con cache)
+            init_content = b""
+            if init_url:
+                if init_url in self.init_cache:
+                    init_content = self.init_cache[init_url]
+                else:
+                    disable_ssl_init = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
+                    async with session.get(init_url, headers=headers, ssl=not disable_ssl_init) as resp:
+                        if resp.status == 200:
+                            init_content = await resp.read()
+                            self.init_cache[init_url] = init_content
+                        else:
+                            logger.error(f"❌ Failed to fetch init segment: {resp.status}")
+                            return web.Response(status=502)
+
+            # 2. Scarica Media Segment
+            disable_ssl_media = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
+            async with session.get(url, headers=headers, ssl=not disable_ssl_media) as resp:
+                if resp.status != 200:
+                    logger.error(f"❌ Failed to fetch segment: {resp.status}")
+                    return web.Response(status=502)
+                
+                segment_content = await resp.read()
+
+            # 3. Decripta con PyCryptodome
+            decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
+
+            # 4. Invia Risposta
+            return web.Response(
+                body=decrypted_content,
+                status=200,
+                headers={'Content-Type': 'video/mp4', 'Access-Control-Allow-Origin': '*'}
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Decryption error: {e}")
+            import traceback
+            traceback.print_exc()
+            return web.Response(status=500, text=f"Decryption failed: {str(e)}")
+
     async def handle_generate_urls(self, request):
         """
         Endpoint compatibile con MediaFlow-Proxy per generare URL proxy.
