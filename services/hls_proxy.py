@@ -1309,7 +1309,7 @@ class HLSProxy:
                 decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
                 import time
                 self.segment_cache[cache_key] = (decrypted_content, time.time())
-                logger.debug(f"📦 Prefetched segment: {url.split('/')[-1]}")
+                logger.info(f"📦 Prefetched segment: {url.split('/')[-1]}")
 
         except Exception as e:
             pass
@@ -1323,6 +1323,8 @@ class HLSProxy:
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         url = request.query.get('url')
+        logger.info(f"🔓 Decrypt Request: {url.split('/')[-1] if url else 'unknown'}")
+
         init_url = request.query.get('init_url')
         key = request.query.get('key')
         key_id = request.query.get('key_id')
@@ -1339,7 +1341,7 @@ class HLSProxy:
         if cache_key in self.segment_cache:
             cached_content, cached_time = self.segment_cache[cache_key]
             if time.time() - cached_time < self.segment_cache_ttl:
-                logger.debug(f"📦 Cache hit for segment")
+                logger.info(f"📦 Cache HIT for segment: {url.split('/')[-1]}")
                 return web.Response(
                     body=cached_content,
                     status=200,
