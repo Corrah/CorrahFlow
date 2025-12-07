@@ -380,8 +380,69 @@ class HLSProxy:
                             logger.error("❌ FFmpeg failed to start")
                             return web.Response(text="FFmpeg failed to process stream", status=502)
                     else:
-                        # Legacy mode: fall through to _proxy_stream which handles MPD via manifest proxy
-                        logger.info(f"🔄 [Legacy Mode] Proxying MPD stream: {stream_url}")
+                        # Legacy mode: use mpd_converter for HLS conversion with server-side decryption
+                        logger.info(f"🔄 [Legacy Mode] Converting MPD to HLS: {stream_url}")
+                        
+                        if MPDToHLSConverter is None:
+                            logger.error("❌ MPDToHLSConverter not available in legacy mode")
+                            return web.Response(text="Legacy MPD converter not available", status=503)
+                        
+                        # Fetch the MPD manifest
+                        session = await self._get_session()
+                        async with session.get(stream_url, headers=stream_headers) as resp:
+                            if resp.status != 200:
+                                return web.Response(text=f"Failed to fetch MPD: {resp.status}", status=502)
+                            manifest_content = await resp.text()
+                        
+                        # Build proxy base URL
+                        scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+                        host = request.headers.get('X-Forwarded-Host', request.host)
+                        proxy_base = f"{scheme}://{host}"
+                        
+                        # Build params string with headers
+                        params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
+                        
+                        # Add api_password if present
+                        api_password = request.query.get('api_password')
+                        if api_password:
+                            params += f"&api_password={api_password}"
+                        
+                        # Get ClearKey param
+                        clearkey_param = request.query.get('clearkey')
+                        if not clearkey_param:
+                            key_id = request.query.get('key_id')
+                            key_val = request.query.get('key')
+                            if key_id and key_val:
+                                clearkey_param = f"{key_id}:{key_val}"
+                            elif key_val:
+                                clearkey_param = key_val
+                        
+                        if clearkey_param:
+                            params += f"&clearkey={clearkey_param}"
+                        
+                        # Check if requesting specific representation
+                        rep_id = request.query.get('rep_id')
+                        
+                        converter = MPDToHLSConverter()
+                        if rep_id:
+                            # Generate media playlist for specific representation
+                            hls_content = converter.convert_media_playlist(
+                                manifest_content, rep_id, proxy_base, stream_url, params, clearkey_param
+                            )
+                        else:
+                            # Generate master playlist
+                            hls_content = converter.convert_master_playlist(
+                                manifest_content, proxy_base, stream_url, params
+                            )
+                        
+                        return web.Response(
+                            text=hls_content,
+                            content_type="application/vnd.apple.mpegurl",
+                            headers={
+                                "Access-Control-Allow-Origin": "*",
+                                "Cache-Control": "no-cache"
+                            }
+                        )
                 
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
