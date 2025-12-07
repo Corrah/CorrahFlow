@@ -192,9 +192,9 @@ class FFmpegManager:
                  except: pass
                  return None
             
-            # Wait extra time to build buffer (60 seconds = ~30 segments of 2s each)
-            logger.info(f"Playlist found, building 60s buffer for stream {stream_id}...")
-            await asyncio.sleep(60)
+            # Wait extra time to build buffer (20 seconds = ~10 segments)
+            logger.info(f"Playlist found, building 20s buffer for stream {stream_id}...")
+            await asyncio.sleep(20)
             
             return f"{stream_id}/index.m3u8"
             
