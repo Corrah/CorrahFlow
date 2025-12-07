@@ -12,7 +12,7 @@ services:
       # Scegli come gestire gli stream MPD/DASH:
       # - ffmpeg: Transcoding via FFmpeg (richiede FFmpeg installato, alta CPU ma sync A/V migliore)
       # - legacy: Usa mpd_converter + drm_decrypter (più leggero ma possibili problemi di compatibilità)
-      - MPD_MODE=legacy
+      #- MPD_MODE=legacy
       
       # VARIABILI OPZIONALI
       
