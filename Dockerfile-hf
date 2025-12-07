@@ -1,9 +1,9 @@
 # Fase 1: Build
-# Usa un'immagine Python ufficiale e leggera come base.
-FROM python:3.11-slim
+# Usa un'immagine Python con base Debian per FFmpeg completo
+FROM python:3.11-bookworm
 
-# Installa git e FFmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg && rm -rf /var/lib/apt/lists/*
+# Installa git e FFmpeg (versione completa con DASH/CENC)
+RUN apt-get update && apt-get install -y git ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Imposta la directory di lavoro all'interno del container.
 WORKDIR /app

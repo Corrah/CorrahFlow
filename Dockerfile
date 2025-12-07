@@ -1,6 +1,6 @@
 # Fase 1: Build
-# Usa un'immagine Python ufficiale e leggera come base.
-FROM python:3.11-slim
+# Usa un'immagine Python con base Debian per FFmpeg completo
+FROM python:3.11-bookworm
 
 # Imposta la directory di lavoro all'interno del container.
 WORKDIR /app
@@ -9,8 +9,8 @@ WORKDIR /app
 # Farlo prima del resto del codice sfrutta la cache di Docker se le dipendenze non cambiano.
 COPY requirements.txt .
 
-# Installa FFmpeg (necessario per transcoding MPD streams)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# Installa FFmpeg con supporto DASH/CENC (versione completa)
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Installa le dipendenze Python.
 RUN pip install --no-cache-dir -r requirements.txt
