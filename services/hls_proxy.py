@@ -115,6 +115,13 @@ class HLSProxy:
         # Cache per segmenti di inizializzazione (URL -> content)
         self.init_cache = {}
         
+        # Cache per segmenti decriptati (URL -> (content, timestamp))
+        self.segment_cache = {}
+        self.segment_cache_ttl = 30  # Seconds
+        
+        # Prefetch queue for background downloading
+        self.prefetch_tasks = set()
+        
         # Sessione condivisa per il proxy
         self.session = None
 
@@ -983,10 +990,34 @@ class HLSProxy:
                             if key_id and key:
                                 clearkey_param = f"{key_id}:{key}"
 
+                        # --- LEGACY MODE: MPD -> HLS Conversion ---
+                        if MPD_MODE == "legacy" and MPDToHLSConverter:
+                            logger.info(f"🔄 [Legacy Mode] Converting MPD to HLS for {stream_url}")
+                            try:
+                                converter = MPDToHLSConverter()
+                                # Passa query string originale come params per i segmenti
+                                hls_playlist = converter.convert_master_playlist(
+                                    manifest_content, proxy_base, stream_url, request.query_string
+                                )
+                                
+                                return web.Response(
+                                    text=hls_playlist,
+                                    headers={
+                                        'Content-Type': 'application/vnd.apple.mpegurl',
+                                        'Content-Disposition': 'attachment; filename="stream.m3u8"',
+                                        'Access-Control-Allow-Origin': '*',
+                                        'Cache-Control': 'no-cache'
+                                    }
+                                )
+                            except Exception as e:
+                                logger.error(f"❌ Legacy conversion failed: {e}")
+                                # Fallback to DASH proxy if conversion fails
+                                pass
+
+                        # --- DEFAULT: DASH Proxy (Rewriting) ---
                         req_format = request.query.get('format')
                         rep_id = request.query.get('rep_id')
 
-                        # --- MPD REWRITING (DASH NATIVO) ---
                         api_password = request.query.get('api_password')
                         rewritten_manifest = ManifestRewriter.rewrite_mpd_manifest(manifest_content, stream_url, proxy_base, headers, clearkey_param, api_password)
                         
@@ -1201,6 +1232,91 @@ class HLSProxy:
         }
         return web.json_response(info)
 
+    def _prefetch_next_segments(self, current_url, init_url, key, key_id, headers):
+        """Identifica i prossimi segmenti e avvia il download in background."""
+        try:
+            parsed = urllib.parse.urlparse(current_url)
+            path = parsed.path
+            
+            # Cerca pattern numerico alla fine del path (es. segment-1.m4s)
+            match = re.search(r'([-_])(\d+)(\.[^.]+)$', path)
+            if not match:
+                return
+
+            separator, current_number, extension = match.groups()
+            current_num = int(current_number)
+
+            # Prefetch next 3 segments
+            for i in range(1, 4):
+                next_num = current_num + i
+                
+                # Replace number in path
+                pattern = f"{separator}{current_number}{re.escape(extension)}$"
+                replacement = f"{separator}{next_num}{extension}"
+                new_path = re.sub(pattern, replacement, path)
+                
+                # Reconstruct URL
+                next_url = urllib.parse.urlunparse(parsed._replace(path=new_path))
+                
+                cache_key = f"{next_url}:{key_id}"
+                
+                if (cache_key not in self.segment_cache and 
+                    cache_key not in self.prefetch_tasks):
+                    
+                    self.prefetch_tasks.add(cache_key)
+                    asyncio.create_task(
+                        self._fetch_and_cache_segment(next_url, init_url, key, key_id, headers, cache_key)
+                    )
+
+        except Exception as e:
+            logger.warning(f"⚠️ Prefetch error: {e}")
+
+    async def _fetch_and_cache_segment(self, url, init_url, key, key_id, headers, cache_key):
+        """Scarica, decripta e mette in cache un segmento in background."""
+        try:
+            if decrypt_segment is None:
+                return
+
+            session = await self._get_session()
+            
+            # Download Init (usa cache se possibile)
+            init_content = b""
+            if init_url:
+                if init_url in self.init_cache:
+                    init_content = self.init_cache[init_url]
+                else:
+                    disable_ssl = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
+                    try:
+                        async with session.get(init_url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 200:
+                                init_content = await resp.read()
+                                self.init_cache[init_url] = init_content
+                    except Exception:
+                        pass 
+
+            # Download Segment
+            segment_content = None
+            disable_ssl = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
+            try:
+                async with session.get(url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status == 200:
+                        segment_content = await resp.read()
+            except Exception:
+                pass
+
+            if segment_content:
+                # Decrypt
+                decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
+                import time
+                self.segment_cache[cache_key] = (decrypted_content, time.time())
+                logger.debug(f"📦 Prefetched segment: {url.split('/')[-1]}")
+
+        except Exception as e:
+            pass
+        finally:
+            if cache_key in self.prefetch_tasks:
+                self.prefetch_tasks.remove(cache_key)
+
     async def handle_decrypt_segment(self, request):
         """Decripta segmenti fMP4 lato server per ClearKey (legacy mode)."""
         if not check_password(request):
@@ -1217,11 +1333,31 @@ class HLSProxy:
         if decrypt_segment is None:
             return web.Response(text="Decrypt not available (MPD_MODE is not legacy)", status=503)
 
+        # Check cache first
+        import time
+        cache_key = f"{url}:{key_id}"
+        if cache_key in self.segment_cache:
+            cached_content, cached_time = self.segment_cache[cache_key]
+            if time.time() - cached_time < self.segment_cache_ttl:
+                logger.debug(f"📦 Cache hit for segment")
+                return web.Response(
+                    body=cached_content,
+                    status=200,
+                    headers={
+                        'Content-Type': 'video/mp4',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'no-cache',
+                        'Connection': 'keep-alive'
+                    }
+                )
+            else:
+                del self.segment_cache[cache_key]
+
         try:
             # Ricostruisce gli headers per le richieste upstream
             headers = {
                 'Connection': 'keep-alive',
-                'Accept-Encoding': 'identity'  # No compression for speed
+                'Accept-Encoding': 'identity'
             }
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
@@ -1266,7 +1402,19 @@ class HLSProxy:
             # Decripta con PyCryptodome
             decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
 
-            # Invia Risposta con headers ottimizzati
+            # Store in cache
+            self.segment_cache[cache_key] = (decrypted_content, time.time())
+            
+            # Clean old cache entries (keep max 50)
+            if len(self.segment_cache) > 50:
+                oldest_keys = sorted(self.segment_cache.keys(), key=lambda k: self.segment_cache[k][1])[:20]
+                for k in oldest_keys:
+                    del self.segment_cache[k]
+
+            # Prefetch next segments in background
+            self._prefetch_next_segments(url, init_url, key, key_id, headers)
+
+            # Invia Risposta
             return web.Response(
                 body=decrypted_content,
                 status=200,
