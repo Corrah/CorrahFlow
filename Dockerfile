@@ -9,7 +9,10 @@ WORKDIR /app
 # Farlo prima del resto del codice sfrutta la cache di Docker se le dipendenze non cambiano.
 COPY requirements.txt .
 
-# Installa le dipendenze.
+# Installa FFmpeg (necessario per transcoding MPD streams)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Installa le dipendenze Python.
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia il resto del codice dell'applicazione nella directory di lavoro.
