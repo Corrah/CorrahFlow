@@ -200,6 +200,12 @@ TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080, DISABLE_SSL=true}, {
 
 # Password per proteggere le API
 API_PASSWORD=mysecretpassword
+
+# --- Modalità Elaborazione MPD ---
+# Scegli come gestire gli stream MPD/DASH:
+# - ffmpeg: Transcoding via FFmpeg (richiede FFmpeg installato, alta CPU ma sync A/V migliore)
+# - legacy: Usa mpd_converter + drm_decrypter (più leggero ma possibili problemi di compatibilità)
+MPD_MODE=legacy
 ```
 
 Le variabili supportate sono:
@@ -207,7 +213,7 @@ Le variabili supportate sono:
 - `TRANSPORT_ROUTES`: Sistema avanzato per routing proxy basato su URL patterns.
 - `PORT`: Porta su cui il server ascolta (default: 7860).
 - `API_PASSWORD`: Password per proteggere l'accesso alle API.
-- `MPD_MODE`: Modalità elaborazione MPD (`ffmpeg` o `legacy`). Default: `ffmpeg`.
+- `MPD_MODE`: Modalità elaborazione MPD (`ffmpeg` o `legacy`). Default: `legacy`.
 
 **Esempio per cambiare la porta:**
 
