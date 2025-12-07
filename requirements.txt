@@ -6,3 +6,5 @@ zstandard
 beautifulsoup4
 lxml
 python-socks
+pycryptodome
+pydash2hls

@@ -207,6 +207,7 @@ Le variabili supportate sono:
 - `TRANSPORT_ROUTES`: Sistema avanzato per routing proxy basato su URL patterns.
 - `PORT`: Porta su cui il server ascolta (default: 7860).
 - `API_PASSWORD`: Password per proteggere l'accesso alle API.
+- `MPD_MODE`: Modalità elaborazione MPD (`ffmpeg` o `legacy`). Default: `ffmpeg`.
 
 **Esempio per cambiare la porta:**
 
