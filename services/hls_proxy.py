@@ -360,14 +360,37 @@ class HLSProxy:
                         # Extract ClearKey if present
                         clearkey_param = request.query.get('clearkey')
                         
-                        # Support separate key_id and key params
+                        # Support separate key_id and key params (handling multiple keys)
                         if not clearkey_param:
-                            key_id = request.query.get('key_id')
-                            key_val = request.query.get('key')
-                            if key_id and key_val:
-                                clearkey_param = f"{key_id}:{key_val}"
-                            elif key_val:
-                                clearkey_param = key_val
+                            key_id_param = request.query.get('key_id')
+                            key_val_param = request.query.get('key')
+                            
+                            if key_id_param and key_val_param:
+                                # Check for multiple keys
+                                key_ids = key_id_param.split(',')
+                                key_vals = key_val_param.split(',')
+                                
+                                if len(key_ids) == len(key_vals):
+                                    clearkey_parts = []
+                                    for kid, kval in zip(key_ids, key_vals):
+                                        clearkey_parts.append(f"{kid.strip()}:{kval.strip()}")
+                                    clearkey_param = ",".join(clearkey_parts)
+                                else:
+                                    # Fallback or error? defaulting to first or simple concat if mismatch
+                                    # Let's try to handle single mismatch case gracefully or just use as is
+                                    if len(key_ids) == 1 and len(key_vals) == 1:
+                                         clearkey_param = f"{key_id_param}:{key_val_param}"
+                                    else:
+                                         logger.warning(f"Mismatch in key_id/key count: {len(key_ids)} vs {len(key_vals)}")
+                                         # Try to pair as many as possible
+                                         min_len = min(len(key_ids), len(key_vals))
+                                         clearkey_parts = []
+                                         for i in range(min_len):
+                                             clearkey_parts.append(f"{key_ids[i].strip()}:{key_vals[i].strip()}")
+                                         clearkey_param = ",".join(clearkey_parts)
+
+                            elif key_val_param:
+                                clearkey_param = key_val_param
                         
                         playlist_rel_path = await self.ffmpeg_manager.get_stream(stream_url, stream_headers, clearkey=clearkey_param)
                         
@@ -437,12 +460,32 @@ class HLSProxy:
                         # Get ClearKey param
                         clearkey_param = request.query.get('clearkey')
                         if not clearkey_param:
-                            key_id = request.query.get('key_id')
-                            key_val = request.query.get('key')
-                            if key_id and key_val:
-                                clearkey_param = f"{key_id}:{key_val}"
-                            elif key_val:
-                                clearkey_param = key_val
+                            key_id_param = request.query.get('key_id')
+                            key_val_param = request.query.get('key')
+                            
+                            if key_id_param and key_val_param:
+                                # Check for multiple keys
+                                key_ids = key_id_param.split(',')
+                                key_vals = key_val_param.split(',')
+                                
+                                if len(key_ids) == len(key_vals):
+                                    clearkey_parts = []
+                                    for kid, kval in zip(key_ids, key_vals):
+                                        clearkey_parts.append(f"{kid.strip()}:{kval.strip()}")
+                                    clearkey_param = ",".join(clearkey_parts)
+                                else:
+                                    if len(key_ids) == 1 and len(key_vals) == 1:
+                                         clearkey_param = f"{key_id_param}:{key_val_param}"
+                                    else:
+                                         logger.warning(f"Mismatch in key_id/key count: {len(key_ids)} vs {len(key_vals)}")
+                                         # Try to pair as many as possible
+                                         min_len = min(len(key_ids), len(key_vals))
+                                         clearkey_parts = []
+                                         for i in range(min_len):
+                                             clearkey_parts.append(f"{key_ids[i].strip()}:{key_vals[i].strip()}")
+                                         clearkey_param = ",".join(clearkey_parts)
+                            elif key_val_param:
+                                clearkey_param = key_val_param
                         
                         if clearkey_param:
                             params += f"&clearkey={clearkey_param}"
@@ -1011,10 +1054,29 @@ class HLSProxy:
                         
                         # ✅ FIX: Supporto per key_id e key separati (stile MediaFlowProxy)
                         if not clearkey_param:
-                            key_id = request.query.get('key_id')
-                            key = request.query.get('key')
-                            if key_id and key:
-                                clearkey_param = f"{key_id}:{key}"
+                            key_id_param = request.query.get('key_id')
+                            key_val_param = request.query.get('key')
+                            
+                            if key_id_param and key_val_param:
+                                # Check for multiple keys
+                                key_ids = key_id_param.split(',')
+                                key_vals = key_val_param.split(',')
+                                
+                                if len(key_ids) == len(key_vals):
+                                    clearkey_parts = []
+                                    for kid, kval in zip(key_ids, key_vals):
+                                        clearkey_parts.append(f"{kid.strip()}:{kval.strip()}")
+                                    clearkey_param = ",".join(clearkey_parts)
+                                else:
+                                    if len(key_ids) == 1 and len(key_vals) == 1:
+                                         clearkey_param = f"{key_id_param}:{key_val_param}"
+                                    else:
+                                         # Try to pair as many as possible
+                                         min_len = min(len(key_ids), len(key_vals))
+                                         clearkey_parts = []
+                                         for i in range(min_len):
+                                             clearkey_parts.append(f"{key_ids[i].strip()}:{key_vals[i].strip()}")
+                                         clearkey_param = ",".join(clearkey_parts)
 
                         # --- LEGACY MODE: MPD -> HLS Conversion ---
                         if MPD_MODE == "legacy" and MPDToHLSConverter:
