@@ -111,30 +111,30 @@ class FFmpegManager:
             "-headers", headers_str,
         ]
         
-        # Decryption Key handling - supports multi-key format "KID1,KID2:KEY1,KEY2"
+        # Decryption Key handling - supports multi-key format "KID1:KEY1,KID2:KEY2"
         if clearkey:
             try:
-                # Format expected: KID:KEY or KID1,KID2:KEY1,KEY2
-                # FFmpeg -cenc_decryption_key expects KEY in hex (without KID)
+                # Expected format: KID1:KEY1,KID2:KEY2
+                # Or just KEY (if single key without KID, legacy)
+                keys_to_use = []
+                
                 if ':' in clearkey:
-                    kid_part, key_part = clearkey.split(':')
-                    
-                    # Check if multi-key (comma-separated)
-                    kids = [k.strip() for k in kid_part.split(',')]
-                    keys = [k.strip() for k in key_part.split(',')]
-                    
-                    if len(kids) != len(keys):
-                        logger.warning(f"Mismatched key count: {len(kids)} KIDs vs {len(keys)} keys")
-                    
-                    # FFmpeg can accept multiple -cenc_decryption_key for different tracks
-                    # Each key will be tried by FFmpeg to decrypt corresponding tracks
-                    for key in keys:
-                        cmd.extend(["-cenc_decryption_key", key])
-                    
-                    logger.info(f"Added {len(keys)} decryption key(s) to FFmpeg command")
+                     pairs = clearkey.split(',')
+                     for pair in pairs:
+                         if ':' in pair:
+                             _, key = pair.split(':')
+                             keys_to_use.append(key.strip())
+                         else:
+                             # Fallback specific weird cases?
+                             pass
                 else:
-                    # Single key without KID
-                    cmd.extend(["-cenc_decryption_key", clearkey])
+                    keys_to_use.append(clearkey)
+                
+                for key in keys_to_use:
+                    cmd.extend(["-cenc_decryption_key", key])
+                
+                if keys_to_use:
+                    logger.info(f"Added {len(keys_to_use)} decryption key(s) to FFmpeg command")
             except Exception as e:
                 logger.error(f"Error parsing clearkey: {e}")
 
