@@ -414,7 +414,11 @@ class HLSProxy:
 
                         async with session.get(stream_url, headers=stream_headers, ssl=ssl_context) as resp:
                             if resp.status != 200:
-                                return web.Response(text=f"Failed to fetch MPD: {resp.status}", status=502)
+                                error_text = await resp.text()
+                                logger.error(f"❌ Failed to fetch MPD. Status: {resp.status}, URL: {stream_url}")
+                                logger.error(f"   Headers: {stream_headers}")
+                                logger.error(f"   Response: {error_text[:500]}") # Truncate for safety
+                                return web.Response(text=f"Failed to fetch MPD: {resp.status}\nResponse: {error_text[:1000]}", status=502)
                             manifest_content = await resp.text()
                         
                         # Build proxy base URL
