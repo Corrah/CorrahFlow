@@ -1407,7 +1407,9 @@ class HLSProxy:
 
             if segment_content:
                 # Decrypt
-                decrypted_content = decrypt_segment(init_content, segment_content, key_id, key)
+                # Decrypt in thread pool to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                decrypted_content = await loop.run_in_executor(None, decrypt_segment, init_content, segment_content, key_id, key)
                 import time
                 self.segment_cache[cache_key] = (decrypted_content, time.time())
                 logger.info(f"📦 Prefetched segment: {url.split('/')[-1]}")
@@ -1550,7 +1552,9 @@ class HLSProxy:
                 combined_content = init_content + segment_content
             else:
                 # Decripta con PyCryptodome
-                combined_content = decrypt_segment(init_content, segment_content, key_id, key)
+                # Decrypt in thread pool to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                combined_content = await loop.run_in_executor(None, decrypt_segment, init_content, segment_content, key_id, key)
 
             # Leggero REMUX to TS
             ts_content = await self._remux_to_ts(combined_content)
