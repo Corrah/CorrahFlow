@@ -406,7 +406,13 @@ class HLSProxy:
                         
                         # Fetch the MPD manifest
                         session = await self._get_session()
-                        async with session.get(stream_url, headers=stream_headers) as resp:
+                        
+                        # Fix SSL Verification for legacy requests
+                        ssl_context = None
+                        if get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES):
+                            ssl_context = False
+
+                        async with session.get(stream_url, headers=stream_headers, ssl=ssl_context) as resp:
                             if resp.status != 200:
                                 return web.Response(text=f"Failed to fetch MPD: {resp.status}", status=502)
                             manifest_content = await resp.text()
