@@ -639,23 +639,34 @@ class HLSProxy:
             if clearkey_param:
                 logger.info(f"🔑 Richiesta licenza ClearKey statica: {clearkey_param}")
                 try:
-                    kid_hex, key_hex = clearkey_param.split(':')
+                    # Support multiple keys separated by comma
+                    # Format: KID1:KEY1,KID2:KEY2
+                    key_pairs = clearkey_param.split(',')
+                    keys_jwk = []
                     
-                    # Converte hex in base64url (senza padding) come richiesto da JWK
+                    # Helper per convertire hex in base64url
                     def hex_to_b64url(hex_str):
                         return base64.urlsafe_b64encode(binascii.unhexlify(hex_str)).decode('utf-8').rstrip('=')
 
+                    for pair in key_pairs:
+                        if ':' in pair:
+                            kid_hex, key_hex = pair.split(':')
+                            keys_jwk.append({
+                                "kty": "oct",
+                                "k": hex_to_b64url(key_hex),
+                                "kid": hex_to_b64url(kid_hex),
+                                "type": "temporary"
+                            })
+                    
+                    if not keys_jwk:
+                        raise ValueError("No valid keys found")
+
                     jwk_response = {
-                        "keys": [{
-                            "kty": "oct",
-                            "k": hex_to_b64url(key_hex),
-                            "kid": hex_to_b64url(kid_hex),
-                            "type": "temporary"
-                        }],
+                        "keys": keys_jwk,
                         "type": "temporary"
                     }
                     
-                    logger.info(f"🔑 Serving static ClearKey license for KID: {kid_hex}")
+                    logger.info(f"🔑 Serving static ClearKey license with {len(keys_jwk)} keys")
                     return web.json_response(jwk_response)
                 except Exception as e:
                     logger.error(f"❌ Errore nella generazione della licenza ClearKey statica: {e}")
