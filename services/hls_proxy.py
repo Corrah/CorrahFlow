@@ -117,7 +117,7 @@ class HLSProxy:
         
         # Cache per segmenti decriptati (URL -> (content, timestamp))
         self.segment_cache = {}
-        self.segment_cache_ttl = 30  # Seconds
+        self.segment_cache_ttl = 60  # Seconds
         
         # Prefetch queue for background downloading
         self.prefetch_tasks = set()
@@ -1348,7 +1348,7 @@ class HLSProxy:
             current_num = int(current_number)
 
             # Prefetch next 3 segments
-            for i in range(1, 4):
+            for i in range(1, 6):
                 next_num = current_num + i
                 
                 # Replace number in path
@@ -1571,8 +1571,8 @@ class HLSProxy:
             self.segment_cache[cache_key] = (ts_content, time.time())
             
             # Clean old cache entries (keep max 50)
-            if len(self.segment_cache) > 50:
-                oldest_keys = sorted(self.segment_cache.keys(), key=lambda k: self.segment_cache[k][1])[:20]
+            if len(self.segment_cache) > 150:
+                oldest_keys = sorted(self.segment_cache.keys(), key=lambda k: self.segment_cache[k][1])[:50]
                 for k in oldest_keys:
                     del self.segment_cache[k]
 
@@ -1710,3 +1710,4 @@ class HLSProxy:
                     await extractor.close()
         except Exception as e:
             logger.error(f"Errore durante cleanup: {e}")
+
