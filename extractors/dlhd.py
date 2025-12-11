@@ -183,18 +183,18 @@ class DLHDExtractor:
         return False
 
     def _get_headers_for_url(self, url: str, base_headers: dict) -> dict:
-        """Applica headers specifici per newkso.ru automaticamente"""
+        """Applica headers specifici per giokko.ru automaticamente"""
         headers = base_headers.copy()
         parsed_url = urlparse(url)
         
-        if "newkso.ru" in parsed_url.netloc:
-            newkso_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
-            newkso_headers = {
+        if "giokko.ru" in parsed_url.netloc:
+            giokko_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            giokko_headers = {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-                'Referer': newkso_origin,
-                'Origin': newkso_origin
+                'Referer': giokko_origin,
+                'Origin': giokko_origin
             }
-            headers.update(newkso_headers)
+            headers.update(giokko_headers)
         
         return headers
 
@@ -625,7 +625,7 @@ class DLHDExtractor:
                 
                 if channel_match:
                     channel_name = channel_match.group(1)
-                    server = server_match.group(1) if server_match else 'newkso.ru'
+                    server = server_match.group(1) if server_match else 'giokko.ru'
                     stream_url = f"https://{server}/{channel_name}/mono.m3u8"
                     logger.info(f"Constructed stream URL: {stream_url}")
             
@@ -690,7 +690,7 @@ class DLHDExtractor:
         logger.info("New auth flow detected. Proceeding with POST auth.")
         
         # 1. Initial Auth POST
-        auth_url = 'https://security.newkso.ru/auth2.php'
+        auth_url = 'https://security.giokko.ru/auth2.php'
         form_data = FormData()
         form_data.add_field('channelKey', params["channel_key"])
         form_data.add_field('country', params["auth_country"])
@@ -739,9 +739,9 @@ class DLHDExtractor:
         auth_token = params['auth_token']
         # The JS logic uses .css, not .m3u8
         if server_key == 'top1/cdn':
-            stream_url = f'https://top1.newkso.ru/top1/cdn/{channel_key}/mono.css'
+            stream_url = f'https://top1.giokko.ru/top1/cdn/{channel_key}/mono.css'
         else:
-            stream_url = f'https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.css'
+            stream_url = f'https://{server_key}new.giokko.ru/{server_key}/{channel_key}/mono.css'
         
         logger.info(f'New auth flow: Constructed stream URL: {stream_url}')
 
