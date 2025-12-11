@@ -45,7 +45,15 @@ class DLHDExtractor:
         # ✅ Lista host iframe (caricata da cache o vuota)
         self.iframe_hosts = cache_data.get('hosts', [])
         
+        # ✅ Configurazione server dinamica dal worker
+        self.auth_url = cache_data.get('auth_url', 'https://security.giokko.ru/auth2.php')
+        self.stream_cdn = cache_data.get('stream_cdn', 'https://top1.giokko.ru')
+        self.stream_pattern = cache_data.get('stream_pattern', 'https://{KEY}new.giokko.ru')
+        
         logger.info(f"Hosts caricati all'avvio: {self.iframe_hosts}")
+        logger.info(f"Auth URL: {self.auth_url}")
+        logger.info(f"Stream CDN: {self.stream_cdn}")
+        logger.info(f"Stream Pattern: {self.stream_pattern}")
 
     def _load_cache(self) -> Dict[str, Any]:
         """Carica la cache da un file codificato in Base64 all'avvio. Ritorna struttura completa."""
@@ -119,7 +127,10 @@ class DLHDExtractor:
                 # Struttura completa
                 cache_data = {
                     'hosts': self.iframe_hosts,
-                    'streams': self._stream_data_cache
+                    'streams': self._stream_data_cache,
+                    'auth_url': self.auth_url,
+                    'stream_cdn': self.stream_cdn,
+                    'stream_pattern': self.stream_pattern
                 }
                 json_data = json.dumps(cache_data)
                 encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
@@ -140,8 +151,22 @@ class DLHDExtractor:
             async with session.get(url, ssl=False, timeout=ClientTimeout(total=10)) as response:
                 if response.status == 200:
                     text = await response.text()
-                    # Parsing: split by newline, strip whitespace, remove empty/invalid lines
-                    new_hosts = [line.strip() for line in text.splitlines() if line.strip()]
+                    # ✅ Parsing con supporto per configurazione completa
+                    lines = [line.strip() for line in text.splitlines() if line.strip()]
+                    new_hosts = []
+                    
+                    for line in lines:
+                        if line.startswith('#AUTH_URL:'):
+                            self.auth_url = line.replace('#AUTH_URL:', '').strip()
+                            logger.info(f"✅ Auth URL aggiornato: {self.auth_url}")
+                        elif line.startswith('#STREAM_CDN:'):
+                            self.stream_cdn = line.replace('#STREAM_CDN:', '').strip()
+                            logger.info(f"✅ Stream CDN aggiornato: {self.stream_cdn}")
+                        elif line.startswith('#STREAM_PATTERN:'):
+                            self.stream_pattern = line.replace('#STREAM_PATTERN:', '').strip()
+                            logger.info(f"✅ Stream Pattern aggiornato: {self.stream_pattern}")
+                        elif not line.startswith('#'):
+                            new_hosts.append(line)
                     
                     if new_hosts:
                         self.iframe_hosts = new_hosts
@@ -158,18 +183,18 @@ class DLHDExtractor:
         return False
 
     def _get_headers_for_url(self, url: str, base_headers: dict) -> dict:
-        """Applica headers specifici per giokko.ru automaticamente"""
+        """Applica headers specifici per newkso.ru automaticamente"""
         headers = base_headers.copy()
         parsed_url = urlparse(url)
         
-        if "giokko.ru" in parsed_url.netloc:
-            giokko_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
-            giokko_headers = {
+        if "newkso.ru" in parsed_url.netloc:
+            newkso_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            newkso_headers = {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-                'Referer': giokko_origin,
-                'Origin': giokko_origin
+                'Referer': newkso_origin,
+                'Origin': newkso_origin
             }
-            headers.update(giokko_headers)
+            headers.update(newkso_headers)
         
         return headers
 
@@ -340,7 +365,8 @@ class DLHDExtractor:
                     logger.info(f"✅ Parametri estratti: channel_key={params['channel_key']}")
                     
                     # Step 3: Auth POST
-                    auth_url = 'https://security.giokko.ru/auth2.php'
+                    # ✅ DINAMICO: usa self.auth_url completo
+                    auth_url = self.auth_url
                     iframe_origin = f"https://{iframe_host}"
                     
                     form_data = FormData()
@@ -410,10 +436,13 @@ class DLHDExtractor:
                     channel_key = params['channel_key']
                     auth_token = params['auth_token']
                     
+                    # ✅ DINAMICO: usa self.stream_cdn e self.stream_pattern
                     if server_key == 'top1/cdn':
-                        stream_url = f'https://top1.giokko.ru/top1/cdn/{channel_key}/mono.css'
+                        stream_url = f'{self.stream_cdn}/top1/cdn/{channel_key}/mono.css'
                     else:
-                        stream_url = f'https://{server_key}new.giokko.ru/{server_key}/{channel_key}/mono.css'
+                        # Sostituisci {KEY} con server_key nel pattern
+                        base_url = self.stream_pattern.replace('{KEY}', server_key)
+                        stream_url = f'{base_url}/{server_key}/{channel_key}/mono.css'
                     
                     logger.info(f"✅ Stream URL costruito: {stream_url}")
                     
@@ -596,7 +625,7 @@ class DLHDExtractor:
                 
                 if channel_match:
                     channel_name = channel_match.group(1)
-                    server = server_match.group(1) if server_match else 'giokko.ru'
+                    server = server_match.group(1) if server_match else 'newkso.ru'
                     stream_url = f"https://{server}/{channel_name}/mono.m3u8"
                     logger.info(f"Constructed stream URL: {stream_url}")
             
@@ -661,7 +690,7 @@ class DLHDExtractor:
         logger.info("New auth flow detected. Proceeding with POST auth.")
         
         # 1. Initial Auth POST
-        auth_url = 'https://security.giokko.ru/auth2.php'
+        auth_url = 'https://security.newkso.ru/auth2.php'
         form_data = FormData()
         form_data.add_field('channelKey', params["channel_key"])
         form_data.add_field('country', params["auth_country"])
@@ -710,9 +739,9 @@ class DLHDExtractor:
         auth_token = params['auth_token']
         # The JS logic uses .css, not .m3u8
         if server_key == 'top1/cdn':
-            stream_url = f'https://top1.giokko.ru/top1/cdn/{channel_key}/mono.css'
+            stream_url = f'https://top1.newkso.ru/top1/cdn/{channel_key}/mono.css'
         else:
-            stream_url = f'https://{server_key}new.giokko.ru/{server_key}/{channel_key}/mono.css'
+            stream_url = f'https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.css'
         
         logger.info(f'New auth flow: Constructed stream URL: {stream_url}')
 
