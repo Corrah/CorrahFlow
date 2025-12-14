@@ -117,7 +117,7 @@ class HLSProxy:
         
         # Cache per segmenti decriptati (URL -> (content, timestamp))
         self.segment_cache = {}
-        self.segment_cache_ttl = 60  # Seconds
+        self.segment_cache_ttl = 30  # Seconds
         
         # Prefetch queue for background downloading
         self.prefetch_tasks = set()
@@ -281,11 +281,21 @@ class HLSProxy:
                 target_url = urllib.parse.unquote(target_url)
             except:
                 pass
+            
+            # ✅ FIX: Extract h_ headers from query params BEFORE calling get_extractor
+            # This ensures GenericHLSExtractor receives the correct Referer/Origin from h_ params
+            # instead of generating them based on the segment's domain.
+            combined_headers = dict(request.headers)
+            for param_name, param_value in request.query.items():
+                if param_name.startswith('h_'):
+                    header_name = param_name[2:]
+                    combined_headers[header_name] = param_value
+            
             # DEBUG LOGGING    
             print(f"🔍 [DEBUG] Processing URL: {target_url}")
             print(f"   Headers: {dict(request.headers)}")
             
-            extractor = await self.get_extractor(target_url, dict(request.headers))
+            extractor = await self.get_extractor(target_url, combined_headers)
             
             print(f"   Extractor: {type(extractor).__name__}")
             
@@ -1004,9 +1014,15 @@ class HLSProxy:
 
                     # ✅ FIX: Se la risposta non è OK, restituisci direttamente l'errore senza processare
                     if resp.status not in [200, 206]:
+                        error_body = await resp.read()
                         logger.warning(f"⚠️ Upstream returned error {resp.status} for {stream_url}")
+                        # ✅ DEBUG: Log error body to understand what CDN is complaining about
+                        try:
+                            print(f"   ❌ Error Body: {error_body.decode('utf-8')[:500]}")
+                        except:
+                            print(f"   ❌ Error Body (bytes): {error_body[:200]}")
                         return web.Response(
-                            body=await resp.read(),
+                            body=error_body,
                             status=resp.status,
                             headers={
                                 'Content-Type': content_type,
@@ -1016,7 +1032,7 @@ class HLSProxy:
                     
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
-                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and 'newkso.ru' in stream_url):
+                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and ('newkso.ru' in stream_url or 'giokko.ru' in stream_url)):
                         manifest_content = await resp.text()
                         
                         # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
@@ -1348,7 +1364,7 @@ class HLSProxy:
             current_num = int(current_number)
 
             # Prefetch next 3 segments
-            for i in range(1, 6):
+            for i in range(1, 4):
                 next_num = current_num + i
                 
                 # Replace number in path
@@ -1571,8 +1587,8 @@ class HLSProxy:
             self.segment_cache[cache_key] = (ts_content, time.time())
             
             # Clean old cache entries (keep max 50)
-            if len(self.segment_cache) > 150:
-                oldest_keys = sorted(self.segment_cache.keys(), key=lambda k: self.segment_cache[k][1])[:50]
+            if len(self.segment_cache) > 50:
+                oldest_keys = sorted(self.segment_cache.keys(), key=lambda k: self.segment_cache[k][1])[:20]
                 for k in oldest_keys:
                     del self.segment_cache[k]
 
@@ -1710,4 +1726,3 @@ class HLSProxy:
                     await extractor.close()
         except Exception as e:
             logger.error(f"Errore durante cleanup: {e}")
-
