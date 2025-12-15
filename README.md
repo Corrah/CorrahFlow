@@ -157,6 +157,8 @@ pkg update && pkg upgrade
 pkg install python git ffmpeg -y
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
+pkg install clang libxml2 libxslt python
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 ```
