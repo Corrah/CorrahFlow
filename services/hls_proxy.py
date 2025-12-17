@@ -850,6 +850,7 @@ class HLSProxy:
                 # ✅ DLHD Heartbeat: Necessario per stabilire la sessione prima di ricevere le chiavi
                 # Usa Heartbeat-Url header per rilevare stream DLHD (completamente dinamico)
                 heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
+                client_token = headers.pop('X-Client-Token', None)  # ✅ Token per heartbeat
                 if heartbeat_url:
                     try:
                         
@@ -859,6 +860,7 @@ class HLSProxy:
                             'User-Agent': headers.get('User-Agent', 'Mozilla/5.0'),
                             'Referer': headers.get('Referer', ''),
                             'Origin': headers.get('Origin', ''),
+                            'X-Client-Token': client_token or '',  # ✅ Token richiesto dal provider
                         }
                         
                         logger.info(f"💓 Pre-key heartbeat a: {heartbeat_url}")
