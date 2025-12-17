@@ -848,14 +848,10 @@ class HLSProxy:
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
                 # ✅ DLHD Heartbeat: Necessario per stabilire la sessione prima di ricevere le chiavi
-                if 'kiko2.ru' in key_url or 'giokko.ru' in key_url:
+                # Usa Heartbeat-Url header per rilevare stream DLHD (completamente dinamico)
+                heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
+                if heartbeat_url:
                     try:
-                        # ✅ Usa heartbeat_url passato come parametro, o costruiscilo dal dominio
-                        heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
-                        if not heartbeat_url:
-                            # Fallback: costruisci dal dominio della chiave
-                            key_domain = urllib.parse.urlparse(key_url).netloc.split('.', 1)[-1]  # es: 'kiko2.ru'
-                            heartbeat_url = f"https://chevy.{key_domain}/heartbeat"
                         
                         hb_headers = {
                             'Authorization': headers.get('Authorization', ''),
@@ -1056,9 +1052,22 @@ class HLSProxy:
                         )
                     
                     # Gestione special per manifest HLS
-                    # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
-                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and ('newkso.ru' in stream_url or 'giokko.ru' in stream_url or 'kiko2.ru' in stream_url)):
+                    # ✅ Gestisce manifest HLS standard e mascherati da .css (usati da DLHD)
+                    # Per .css, verifica se contiene #EXTM3U (signature HLS) per rilevare manifest mascherati
+                    is_hls_manifest = 'mpegurl' in content_type or stream_url.endswith('.m3u8')
+                    is_css_file = stream_url.endswith('.css')
+                    
+                    if is_hls_manifest or is_css_file:
                         manifest_content = await resp.text()
+                        
+                        # Per .css, verifica che sia effettivamente un manifest HLS
+                        if is_css_file and not manifest_content.strip().startswith('#EXTM3U'):
+                            # Non è un manifest HLS, restituisci come CSS normale
+                            return web.Response(
+                                text=manifest_content,
+                                content_type=content_type or 'text/css',
+                                headers={'Access-Control-Allow-Origin': '*'}
+                            )
                         
                         # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
