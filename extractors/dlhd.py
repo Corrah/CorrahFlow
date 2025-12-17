@@ -46,17 +46,21 @@ class DLHDExtractor:
         self.iframe_hosts = cache_data.get('hosts', [])
         
         # ✅ Configurazione server dinamica dal worker (usando TEMPLATE completi)
-        # NOTA: kiko2.ru è il dominio aggiornato (era giokko.ru)
+        # Tutti i valori provengono dal worker, i fallback sono solo per il primo avvio
         self.auth_url = cache_data.get('auth_url', 'https://security.kiko2.ru/auth2.php')
         self.stream_cdn_template = cache_data.get('stream_cdn_template', 'https://top1.kiko2.ru/top1/cdn/{CHANNEL}/mono.css')
         self.stream_other_template = cache_data.get('stream_other_template', 'https://{SERVER_KEY}new.kiko2.ru/{SERVER_KEY}/{CHANNEL}/mono.css')
         self.heartbeat_url = cache_data.get('heartbeat_url', 'https://chevy.kiko2.ru/heartbeat')
+        self.server_lookup_url = cache_data.get('server_lookup_url', 'https://chevy.kiko2.ru/server_lookup')
+        self.base_domain = cache_data.get('base_domain', 'kiko2.ru')
         
         logger.info(f"Hosts caricati all'avvio: {self.iframe_hosts}")
         logger.info(f"Auth URL: {self.auth_url}")
         logger.info(f"Stream CDN Template: {self.stream_cdn_template}")
         logger.info(f"Stream Other Template: {self.stream_other_template}")
         logger.info(f"Heartbeat URL: {self.heartbeat_url}")
+        logger.info(f"Server Lookup URL: {self.server_lookup_url}")
+        logger.info(f"Base Domain: {self.base_domain}")
 
     def _load_cache(self) -> Dict[str, Any]:
         """Carica la cache da un file codificato in Base64 all'avvio. Ritorna struttura completa."""
@@ -134,7 +138,9 @@ class DLHDExtractor:
                     'auth_url': self.auth_url,
                     'stream_cdn_template': self.stream_cdn_template,
                     'stream_other_template': self.stream_other_template,
-                    'heartbeat_url': self.heartbeat_url
+                    'heartbeat_url': self.heartbeat_url,
+                    'server_lookup_url': self.server_lookup_url,
+                    'base_domain': self.base_domain
                 }
                 json_data = json.dumps(cache_data)
                 encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
@@ -172,6 +178,12 @@ class DLHDExtractor:
                         elif line.startswith('#HEARTBEAT_URL:'):
                             self.heartbeat_url = line.replace('#HEARTBEAT_URL:', '').strip()
                             logger.info(f"✅ Heartbeat URL aggiornato: {self.heartbeat_url}")
+                        elif line.startswith('#SERVER_LOOKUP_URL:'):
+                            self.server_lookup_url = line.replace('#SERVER_LOOKUP_URL:', '').strip()
+                            logger.info(f"✅ Server Lookup URL aggiornato: {self.server_lookup_url}")
+                        elif line.startswith('#BASE_DOMAIN:'):
+                            self.base_domain = line.replace('#BASE_DOMAIN:', '').strip()
+                            logger.info(f"✅ Base Domain aggiornato: {self.base_domain}")
                         elif not line.startswith('#'):
                             new_hosts.append(line)
                     
@@ -194,11 +206,8 @@ class DLHDExtractor:
         headers = base_headers.copy()
         parsed_url = urlparse(url)
         
-        # Estrai dominio base da stream_cdn_template (es: 'https://top1.giokko.ru/top1/cdn/{CHANNEL}/mono.css' -> 'giokko.ru')
-        try:
-            stream_domain = urlparse(self.stream_cdn_template).netloc.split('.', 1)[-1]  # 'top1.kiko2.ru' -> 'kiko2.ru'
-        except:
-            stream_domain = 'kiko2.ru'  # Fallback
+        # Usa base_domain dinamico dal worker
+        stream_domain = self.base_domain
         
         if stream_domain in parsed_url.netloc:
             origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -447,7 +456,8 @@ class DLHDExtractor:
                     logger.info(f"🍪 Tutti i cookies nella sessione dopo auth: {all_session_cookies}")
                     
                     # Step 4: Server Lookup
-                    server_lookup_url = f"https://{iframe_host}/server_lookup.js?channel_id={params['channel_key']}"
+                    # ✅ Usa server_lookup_url dinamico dal worker
+                    server_lookup_url = f"{self.server_lookup_url}?channel_id={params['channel_key']}"
                     lookup_headers = {
                         'User-Agent': user_agent,
                         'Accept': '*/*',
@@ -687,12 +697,8 @@ class DLHDExtractor:
                 
                 if channel_match:
                     channel_name = channel_match.group(1)
-                    # Estrai dominio base da stream_cdn_template come fallback
-                    try:
-                        fallback_domain = urlparse(self.stream_cdn_template).netloc.split('.', 1)[-1]
-                    except:
-                        fallback_domain = 'kiko2.ru'
-                    server = server_match.group(1) if server_match else fallback_domain
+                    # Usa base_domain dinamico
+                    server = server_match.group(1) if server_match else self.base_domain
                     stream_url = f"https://{server}/{channel_name}/mono.m3u8"
                     logger.info(f"Constructed stream URL: {stream_url}")
             
@@ -790,7 +796,8 @@ class DLHDExtractor:
             raise ExtractorError(f"New auth flow failed during initial auth POST: {e}")
 
         # 2. Server Lookup
-        server_lookup_url = f"https://{urlparse(iframe_url).netloc}/server_lookup.js?channel_id={params['channel_key']}"
+        # ✅ Usa server_lookup_url dinamico dal worker
+        server_lookup_url = f"{self.server_lookup_url}?channel_id={params['channel_key']}"
         try:
             lookup_resp = await self._make_robust_request(server_lookup_url, headers=headers)
             server_data = await lookup_resp.json()
