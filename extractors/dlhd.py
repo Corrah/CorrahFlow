@@ -46,14 +46,17 @@ class DLHDExtractor:
         self.iframe_hosts = cache_data.get('hosts', [])
         
         # ✅ Configurazione server dinamica dal worker (usando TEMPLATE completi)
-        self.auth_url = cache_data.get('auth_url', 'https://security.giokko.ru/auth2.php')
-        self.stream_cdn_template = cache_data.get('stream_cdn_template', 'https://top1.giokko.ru/top1/cdn/{CHANNEL}/mono.css')
-        self.stream_other_template = cache_data.get('stream_other_template', 'https://{SERVER_KEY}new.giokko.ru/{SERVER_KEY}/{CHANNEL}/mono.css')
+        # NOTA: kiko2.ru è il dominio aggiornato (era giokko.ru)
+        self.auth_url = cache_data.get('auth_url', 'https://security.kiko2.ru/auth2.php')
+        self.stream_cdn_template = cache_data.get('stream_cdn_template', 'https://top1.kiko2.ru/top1/cdn/{CHANNEL}/mono.css')
+        self.stream_other_template = cache_data.get('stream_other_template', 'https://{SERVER_KEY}new.kiko2.ru/{SERVER_KEY}/{CHANNEL}/mono.css')
+        self.heartbeat_url = cache_data.get('heartbeat_url', 'https://chevy.kiko2.ru/heartbeat')
         
         logger.info(f"Hosts caricati all'avvio: {self.iframe_hosts}")
         logger.info(f"Auth URL: {self.auth_url}")
         logger.info(f"Stream CDN Template: {self.stream_cdn_template}")
         logger.info(f"Stream Other Template: {self.stream_other_template}")
+        logger.info(f"Heartbeat URL: {self.heartbeat_url}")
 
     def _load_cache(self) -> Dict[str, Any]:
         """Carica la cache da un file codificato in Base64 all'avvio. Ritorna struttura completa."""
@@ -130,7 +133,8 @@ class DLHDExtractor:
                     'streams': self._stream_data_cache,
                     'auth_url': self.auth_url,
                     'stream_cdn_template': self.stream_cdn_template,
-                    'stream_other_template': self.stream_other_template
+                    'stream_other_template': self.stream_other_template,
+                    'heartbeat_url': self.heartbeat_url
                 }
                 json_data = json.dumps(cache_data)
                 encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
@@ -165,6 +169,9 @@ class DLHDExtractor:
                         elif line.startswith('#STREAM_OTHER_TEMPLATE:'):
                             self.stream_other_template = line.replace('#STREAM_OTHER_TEMPLATE:', '').strip()
                             logger.info(f"✅ Stream Other Template aggiornato: {self.stream_other_template}")
+                        elif line.startswith('#HEARTBEAT_URL:'):
+                            self.heartbeat_url = line.replace('#HEARTBEAT_URL:', '').strip()
+                            logger.info(f"✅ Heartbeat URL aggiornato: {self.heartbeat_url}")
                         elif not line.startswith('#'):
                             new_hosts.append(line)
                     
@@ -189,9 +196,9 @@ class DLHDExtractor:
         
         # Estrai dominio base da stream_cdn_template (es: 'https://top1.giokko.ru/top1/cdn/{CHANNEL}/mono.css' -> 'giokko.ru')
         try:
-            stream_domain = urlparse(self.stream_cdn_template).netloc.split('.', 1)[-1]  # 'top1.giokko.ru' -> 'giokko.ru'
+            stream_domain = urlparse(self.stream_cdn_template).netloc.split('.', 1)[-1]  # 'top1.kiko2.ru' -> 'kiko2.ru'
         except:
-            stream_domain = 'giokko.ru'  # Fallback
+            stream_domain = 'kiko2.ru'  # Fallback
         
         if stream_domain in parsed_url.netloc:
             origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -373,6 +380,7 @@ class DLHDExtractor:
                     # Step 3: Auth POST
                     # ✅ DINAMICO: usa self.auth_url completo
                     auth_url = self.auth_url
+                    logger.info(f"🔐 Usando auth_url: {auth_url}")
                     iframe_origin = f"https://{iframe_host}"
                     
                     form_data = FormData()
@@ -429,6 +437,15 @@ class DLHDExtractor:
                     
                     logger.info("✅ Auth riuscito!")
                     
+                    # ✅ DEBUG: Log cookies e headers dalla risposta auth
+                    auth_cookies = auth_resp.cookies
+                    logger.info(f"🍪 Cookies dalla risposta auth: {dict(auth_cookies)}")
+                    logger.info(f"📋 Headers dalla risposta auth: {dict(auth_resp.headers)}")
+                    
+                    # Log tutti i cookies nella session dopo auth
+                    all_session_cookies = list(session.cookie_jar)
+                    logger.info(f"🍪 Tutti i cookies nella sessione dopo auth: {all_session_cookies}")
+                    
                     # Step 4: Server Lookup
                     server_lookup_url = f"https://{iframe_host}/server_lookup.js?channel_id={params['channel_key']}"
                     lookup_headers = {
@@ -448,7 +465,32 @@ class DLHDExtractor:
                     
                     logger.info(f"✅ Server key: {server_key}")
                     
-                    # Step 5: Build final URL
+                    # Step 5: Heartbeat - NECESSARIO per stabilire la sessione prima di ricevere le chiavi
+                    channel_key = params['channel_key']
+                    auth_token = params['auth_token']
+                    
+                    # ✅ Usa heartbeat_url dinamico dal worker
+                    heartbeat_url = self.heartbeat_url
+                    heartbeat_headers = {
+                        'User-Agent': user_agent,
+                        'Authorization': f'Bearer {auth_token}',
+                        'X-Channel-Key': channel_key,
+                        'Referer': iframe_url,
+                        'Origin': iframe_origin,
+                    }
+                    
+                    try:
+                        logger.info(f"💓 Invio heartbeat a: {heartbeat_url}")
+                        async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
+                            hb_text = await hb_resp.text()
+                            logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
+                            if hb_resp.status != 200:
+                                logger.warning(f"⚠️ Heartbeat non-200: {hb_resp.status}")
+                    except Exception as hb_e:
+                        logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
+                        # Non blocchiamo l'estrazione se il heartbeat fallisce
+                    
+                    # Step 6: Build final URL
                     channel_key = params['channel_key']
                     auth_token = params['auth_token']
                     
@@ -468,6 +510,7 @@ class DLHDExtractor:
                         'Origin': iframe_origin,
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
+                        'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
                     }
 
                     # ✅ Aggiungi cookies dalla sessione corrente
@@ -648,7 +691,7 @@ class DLHDExtractor:
                     try:
                         fallback_domain = urlparse(self.stream_cdn_template).netloc.split('.', 1)[-1]
                     except:
-                        fallback_domain = 'giokko.ru'
+                        fallback_domain = 'kiko2.ru'
                     server = server_match.group(1) if server_match else fallback_domain
                     stream_url = f"https://{server}/{channel_name}/mono.m3u8"
                     logger.info(f"Constructed stream URL: {stream_url}")
