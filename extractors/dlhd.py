@@ -514,6 +514,19 @@ class DLHDExtractor:
                     
                     logger.info(f"✅ Stream URL costruito: {stream_url}")
                     
+                    # ✅ Genera X-Client-Token (richiesto dal provider per heartbeat/chiavi)
+                    # Formula: btoa(CHANNEL_KEY|AUTH_COUNTRY|AUTH_TS|UA|fingerprint)
+                    # fingerprint = UA|screen|timezone|lang
+                    auth_ts = params.get('auth_ts', '')
+                    auth_country = params.get('auth_country', 'IT')
+                    screen_res = "1920x1080"  # Simula risoluzione comune
+                    timezone = "Europe/Rome"
+                    lang = "it-IT"
+                    fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
+                    sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
+                    client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
+                    logger.info(f"🔐 X-Client-Token generato per channel {channel_key}")
+                    
                     stream_headers = {
                         'User-Agent': user_agent,
                         'Referer': iframe_url,
@@ -521,6 +534,7 @@ class DLHDExtractor:
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
                         'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
+                        'X-Client-Token': client_token,  # ✅ Token richiesto per heartbeat/chiavi
                     }
 
                     # ✅ Aggiungi cookies dalla sessione corrente
