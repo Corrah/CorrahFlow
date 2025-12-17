@@ -836,7 +836,7 @@ class HLSProxy:
                     headers[header_name] = param_value
 
             logger.info(f"🔑 Fetching AES key from: {key_url}")
-            logger.debug(f"   -> with headers: {headers}")
+            logger.info(f"   -> with headers: {headers}")
             
             # ✅ NUOVO: Usa il sistema di routing basato su TRANSPORT_ROUTES
             proxy = get_proxy_for_url(key_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
@@ -847,6 +847,31 @@ class HLSProxy:
             
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
+                # ✅ DLHD Heartbeat: Necessario per stabilire la sessione prima di ricevere le chiavi
+                if 'kiko2.ru' in key_url or 'giokko.ru' in key_url:
+                    try:
+                        # ✅ Usa heartbeat_url passato come parametro, o costruiscilo dal dominio
+                        heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
+                        if not heartbeat_url:
+                            # Fallback: costruisci dal dominio della chiave
+                            key_domain = urllib.parse.urlparse(key_url).netloc.split('.', 1)[-1]  # es: 'kiko2.ru'
+                            heartbeat_url = f"https://chevy.{key_domain}/heartbeat"
+                        
+                        hb_headers = {
+                            'Authorization': headers.get('Authorization', ''),
+                            'X-Channel-Key': headers.get('X-Channel-Key', ''),
+                            'User-Agent': headers.get('User-Agent', 'Mozilla/5.0'),
+                            'Referer': headers.get('Referer', ''),
+                            'Origin': headers.get('Origin', ''),
+                        }
+                        
+                        logger.info(f"💓 Pre-key heartbeat a: {heartbeat_url}")
+                        async with session.get(heartbeat_url, headers=hb_headers, ssl=False, **connector_kwargs) as hb_resp:
+                            hb_text = await hb_resp.text()
+                            logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
+                    except Exception as hb_e:
+                        logger.warning(f"⚠️ Pre-key heartbeat fallito: {hb_e}")
+                
                 async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
                     if resp.status == 200 or resp.status == 206:
                         key_data = await resp.read()
@@ -1032,7 +1057,7 @@ class HLSProxy:
                     
                     # Gestione special per manifest HLS
                     # ✅ CORREZIONE: Gestisce anche i manifest mascherati da .css (usati da DLHD)
-                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and ('newkso.ru' in stream_url or 'giokko.ru' in stream_url)):
+                    if 'mpegurl' in content_type or stream_url.endswith('.m3u8') or (stream_url.endswith('.css') and ('newkso.ru' in stream_url or 'giokko.ru' in stream_url or 'kiko2.ru' in stream_url)):
                         manifest_content = await resp.text()
                         
                         # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
