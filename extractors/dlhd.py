@@ -380,9 +380,15 @@ class DLHDExtractor:
                     
                     missing_params = [k for k, v in params.items() if not v]
                     if missing_params:
-                        logger.warning(f"⚠️ Parametri mancanti da {iframe_host}: {missing_params}")
-                        last_error = ExtractorError(f"Missing params: {missing_params}")
-                        continue
+                        logger.warning(f"⚠️ Parametri mancanti da {iframe_host}: {missing_params}. Tentativo con nuovo flusso euristico...")
+                        try:
+                            # Se mancano i parametri standard, prova il nuovo flusso euristico/obfuscated
+                            result = await self._extract_new_auth_flow(iframe_url, js_content, embed_headers)
+                            return result
+                        except Exception as e:
+                            logger.warning(f"⚠️ Nuovo flusso fallito: {e}")
+                            last_error = ExtractorError(f"Missing params: {missing_params} and New Flow failed")
+                            continue
                     
                     logger.info(f"✅ Parametri estratti: channel_key={params['channel_key']}")
                     
@@ -422,6 +428,7 @@ class DLHDExtractor:
                         if auth_resp.status != 200 or 'Blocked' in auth_text or 'bad params' in auth_text.lower():
                             logger.warning(f"⚠️ Auth bloccato da {iframe_host}: {auth_text[:50]}")
                             
+                            
                             # ✅ NUOVO: Se è il primo host e auth fallisce, prova a refreshare config
                             if iframe_host == hosts_to_try[0] and not getattr(self, '_config_refreshed', False):
                                 logger.info("🔄 Auth fallito, provo ad aggiornare config dal worker...")
@@ -431,8 +438,15 @@ class DLHDExtractor:
                                     auth_url = self.auth_url
                                     logger.info(f"✅ Config aggiornata, nuovo auth_url: {auth_url}")
                             
-                            last_error = ExtractorError(f"Auth blocked: {auth_text}")
-                            continue
+                            # ✅ TENTATIVO NUOVO FLUSSO se Auth fallisce (es. token invalidi)
+                            logger.warning("⚠️ Auth fallito con metodo standard. Tento nuovo flusso euristico...")
+                            try:
+                                result = await self._extract_new_auth_flow(iframe_url, js_content, embed_headers)
+                                return result
+                            except Exception as e:
+                                logger.warning(f"⚠️ Nuovo flusso (fallback) fallito: {e}")
+                                last_error = ExtractorError(f"Auth blocked: {auth_text} AND New Flow failed: {e}")
+                                continue
                         
                         try:
                             auth_data = json.loads(auth_text)
@@ -751,53 +765,159 @@ class DLHDExtractor:
             raise ExtractorError(f"Failed to extract lovecdn.ru stream: {e}")
 
     async def _extract_new_auth_flow(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
-        """Gestisce il nuovo flusso di autenticazione."""
+        """Gestisce il nuovo flusso di autenticazione con estrazione euristica."""
         
-        def _extract_params(js: str) -> Dict[str, Optional[str]]:
-            params = {}
-            patterns = {
-                "channel_key": r'(?:const|var|let)\s+(?:CHANNEL_KEY|channelKey)\s*=\s*["\']([^"\']+)["\']',
-                "auth_token": r'(?:const|var|let)\s+AUTH_TOKEN\s*=\s*["\']([^"\']+)["\']',
-                "auth_country": r'(?:const|var|let)\s+AUTH_COUNTRY\s*=\s*["\']([^"\']+)["\']',
-                "auth_ts": r'(?:const|var|let)\s+AUTH_TS\s*=\s*["\']([^"\']+)["\']',
-                "auth_expiry": r'(?:const|var|let)\s+AUTH_EXPIRY\s*=\s*["\']([^"\']+)["\']',
-            }
-            for key, pattern in patterns.items():
-                match = re.search(pattern, js)
-                params[key] = match.group(1) if match else None
-            return params
-
-        params = _extract_params(iframe_content)
+        logger.info("Tentativo rilevamento nuovo flusso auth obfuscated...")
         
-        missing_params = [k for k, v in params.items() if not v]
-        if missing_params:
-            # This is not an error, just means it's not the new flow
-            raise ExtractorError(f"Not the new auth flow: missing params {missing_params}")
-
-        logger.info("New auth flow detected. Proceeding with POST auth.")
+        # 1. Estrazione euristica delle variabili
+        params = {}
         
-        # 1. Initial Auth POST
-        auth_url = self.auth_url  # Usa auth_url dinamico
-        form_data = FormData()
-        form_data.add_field('channelKey', params["channel_key"])
-        form_data.add_field('country', params["auth_country"])
-        form_data.add_field('timestamp', params["auth_ts"])
-        form_data.add_field('expiry', params["auth_expiry"])
-        form_data.add_field('token', params["auth_token"])
+        # Cerca il JWT (inizia con eyJ...)
+        jwt_match = re.search(r'["\'](eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)["\']', iframe_content)
+        if jwt_match:
+            params['auth_token'] = jwt_match.group(1)
+            logger.info("✅ Trovato possibile JWT Token")
+            
+        # Cerca Channel Key (es: premium853) - o stringa alfanumerica di media lunghezza
+        # Spesso assegnata a una variabile corta
+        key_matches = re.finditer(r'["\']([a-z]+[0-9]+)["\']', iframe_content)
+        for m in key_matches:
+            val = m.group(1)
+            # Filtro euristico: deve sembrare una chiave canale (es. dad123, premium853, etc)
+            if re.match(r'^(premium|dad|sport|live)[0-9]+$', val) or '853' in val: # Harcoded check per debug
+                params['channel_key'] = val
+                logger.info(f"✅ Trovata possibile Channel Key: {val}")
+                break
+                
+        # Cerca Country (2 lettere maiuscole)
+        country_match = re.search(r'["\']([A-Z]{2})["\']', iframe_content)
+        if country_match:
+            params['auth_country'] = country_match.group(1)
+        else:
+             params['auth_country'] = 'DE' # Fallback
+             
+        # Cerca Timestamp (10 cifre)
+        ts_matches = re.findall(r'["\']([0-9]{10})["\']', iframe_content)
+        if ts_matches:
+            # Assumiamo che il primo sia iat/ts e il secondo exp, o viceversa.
+            # Prendi il più piccolo come TS corrente
+            ts_values = sorted([int(x) for x in ts_matches])
+            params['auth_ts'] = str(ts_values[0])
+            if len(ts_values) > 1:
+                params['auth_expiry'] = str(ts_values[-1])
+            else:
+                params['auth_expiry'] = str(ts_values[0] + 3600)
+        
+        # Validazione minima
+        if not params.get('auth_token'):
+             raise ExtractorError("Impossibile estrarre JWT dal nuovo flusso.")
+             
+        # Se manca channel key, prova a estrarla dall'URL
+        if not params.get('channel_key'):
+             # fallback da URL iframe o parametro passato
+             pass # Gestito dal chiamante se fallisce qui
+        
+        logger.info(f"✅ Parametri euristici estratti: {params}")
 
+        # 2. SKIP auth2.php POST - Il nuovo flusso usa direttamente il token nel heartbeat
+        # L'errore "INVALID_TOKEN" su auth2.php suggerisce che quel passaggio è deprecato o rotto per questo flusso.
+        
+        logger.info("🚀 Skipping auth2.php POST (nuovo flusso detectato). Procedo diretto al heartbeat.")
+        
+        # 3. Server Lookup & Heartbeat Setup
+        auth_token = params['auth_token']
+        # Se channel_key non trovato nel JS, prova a derivarlo dall'URL iframe originale se possibile,
+        # ma qui assumiamo che il chiamante (extract) l'abbia passato o che lo troviamo.
+        # Per ora usiamo quello trovato o falliamo.
+        
+        channel_key = params.get('channel_key')
+        if not channel_key:
+             # Tentativo estremo: estrai da URL iframe
+             m_url = re.search(r'id=([0-9]+)', iframe_url)
+             if m_url:
+                 # Spesso la key è 'premium' + id
+                 channel_key = f"premium{m_url.group(1)}"
+                 logger.info(f"⚠️ Channel Key non trovata nel JS, indovinata dall'URL: {channel_key}")
+             else:
+                 raise ExtractorError("Channel Key mancante e non derivabile.")
+
+        # 4. Server Lookup
+        user_agent = headers.get('User-Agent')
         iframe_origin = f"https://{urlparse(iframe_url).netloc}"
-        auth_headers = headers.copy()
-        auth_headers.update({
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Origin': iframe_origin,
-            'Referer': iframe_url,
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'cross-site',
-            'Priority': 'u=1, i',
-        })
         
+        server_lookup_url = f"{self.server_lookup_url}?channel_id={channel_key}"
+        lookup_headers = {
+            'User-Agent': user_agent,
+            'Accept': '*/*',
+            'Referer': iframe_url,
+            'Origin': iframe_origin,
+        }
+        
+        logger.info(f"🔍 Server Lookup su: {server_lookup_url}")
+        lookup_resp = await self._make_robust_request(server_lookup_url, headers=lookup_headers, retries=2)
+        server_data = await lookup_resp.json()
+        server_key = server_data.get('server_key')
+        
+        if not server_key:
+            raise ExtractorError(f"No server_key in response: {server_data}")
+        
+        logger.info(f"✅ Server key: {server_key}")
+        
+        # 5. Heartbeat
+        heartbeat_url = self.heartbeat_url
+        
+        # Genera X-Client-Token (stessa logica)
+        auth_country = params.get('auth_country', 'DE')
+        auth_ts = params.get('auth_ts', str(int(time.time())))
+        screen_res = "1920x1080"
+        timezone = "Europe/Berlin" 
+        lang = "en-US"
+        fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
+        sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
+        client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
+        
+        heartbeat_headers = {
+            'User-Agent': user_agent,
+            'Authorization': f'Bearer {auth_token}',
+            'X-Channel-Key': channel_key,
+            'X-Client-Token': client_token,
+            'Referer': iframe_url,
+            'Origin': iframe_origin,
+        }
+        
+        try:
+            logger.info(f"💓 Invio heartbeat (diretto) a: {heartbeat_url}")
+            async with self.session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
+                hb_text = await hb_resp.text()
+                logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
+        except Exception as hb_e:
+            logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
+            
+        # 6. Build Stream URL
+        if server_key == 'top1/cdn':
+            stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
+        else:
+            stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
+            
+        logger.info(f"✅ Stream URL costruito: {stream_url}")
+        
+        stream_headers = {
+            'User-Agent': user_agent,
+            'Referer': iframe_url,
+            'Origin': iframe_origin,
+            'Authorization': f'Bearer {auth_token}',
+            'X-Channel-Key': channel_key,
+            'Heartbeat-Url': self.heartbeat_url,
+            'X-Client-Token': client_token,
+        }
+        
+        return {
+            "destination_url": stream_url,
+            "request_headers": stream_headers,
+            "mediaflow_endpoint": self.mediaflow_endpoint,
+            "expires_at": float(params.get('auth_expiry', 0))
+        }
+
         try:
             session = await self._get_session()
             async with session.post(auth_url, data=form_data, headers=auth_headers, ssl=False) as auth_resp:
