@@ -1060,16 +1060,37 @@ class HLSProxy:
                     is_css_file = stream_url.endswith('.css')
                     
                     if is_hls_manifest or is_css_file:
-                        manifest_content = await resp.text()
-                        
-                        # Per .css, verifica che sia effettivamente un manifest HLS
-                        if is_css_file and not manifest_content.strip().startswith('#EXTM3U'):
-                            # Non è un manifest HLS, restituisci come CSS normale
-                            return web.Response(
-                                text=manifest_content,
-                                content_type=content_type or 'text/css',
-                                headers={'Access-Control-Allow-Origin': '*'}
-                            )
+                        try:
+                            # Leggi come bytes prima per evitare crash su decode
+                            content_bytes = await resp.read()
+                            
+                            try:
+                                # Tenta la decodifica testo
+                                manifest_content = content_bytes.decode('utf-8')
+                            except UnicodeDecodeError:
+                                # SE FALLISCE: È binario mascherato (es. segmento .ts in un .css)
+                                logger.warning(f"⚠️ Binary detected in {stream_url} (masked as {content_type}). Serving as binary.")
+                                return web.Response(
+                                    body=content_bytes,
+                                    status=resp.status,
+                                    headers={
+                                        'Content-Type': 'video/MP2T', # Forza TS se è binario camuffato
+                                        'Access-Control-Allow-Origin': '*'
+                                    }
+                                )
+
+                            # Per .css, verifica che sia effettivamente un manifest HLS
+                            if is_css_file and not manifest_content.strip().startswith('#EXTM3U'):
+                                # Non è un manifest HLS, restituisci come CSS normale
+                                return web.Response(
+                                    text=manifest_content,
+                                    content_type=content_type or 'text/css',
+                                    headers={'Access-Control-Allow-Origin': '*'}
+                                )
+                        except Exception as e:
+                             logger.error(f"Error processing manifest/css: {e}")
+                             # Fallback to binary proxy
+                             return web.Response(body=await resp.read(), status=resp.status, headers={'Access-Control-Allow-Origin': '*'})
                         
                         # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
