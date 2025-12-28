@@ -437,22 +437,38 @@ class HLSProxy:
                             logger.error("❌ MPDToHLSConverter not available in legacy mode")
                             return web.Response(text="Legacy MPD converter not available", status=503)
                         
-                        # Fetch the MPD manifest
-                        session = await self._get_session()
+                        # Fetch the MPD manifest with proxy support
+                        proxy = get_proxy_for_url(stream_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
                         
                         # Fix SSL Verification for legacy requests
                         ssl_context = None
-                        if get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES):
+                        disable_ssl = get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES)
+                        if disable_ssl:
                             ssl_context = False
+                        
+                        # Create session with proxy if available
+                        mpd_session = None
+                        try:
+                            if proxy:
+                                logger.info(f"🌍 Fetching MPD via proxy: {proxy}")
+                                connector = ProxyConnector.from_url(proxy, ssl=ssl_context if ssl_context is False else None)
+                                timeout = ClientTimeout(total=30)
+                                mpd_session = ClientSession(timeout=timeout, connector=connector)
+                            else:
+                                mpd_session = await self._get_session()
 
-                        async with session.get(stream_url, headers=stream_headers, ssl=ssl_context) as resp:
-                            if resp.status != 200:
-                                error_text = await resp.text()
-                                logger.error(f"❌ Failed to fetch MPD. Status: {resp.status}, URL: {stream_url}")
-                                logger.error(f"   Headers: {stream_headers}")
-                                logger.error(f"   Response: {error_text[:500]}") # Truncate for safety
-                                return web.Response(text=f"Failed to fetch MPD: {resp.status}\nResponse: {error_text[:1000]}", status=502)
-                            manifest_content = await resp.text()
+                            async with mpd_session.get(stream_url, headers=stream_headers, ssl=ssl_context) as resp:
+                                if resp.status != 200:
+                                    error_text = await resp.text()
+                                    logger.error(f"❌ Failed to fetch MPD. Status: {resp.status}, URL: {stream_url}")
+                                    logger.error(f"   Headers: {stream_headers}")
+                                    logger.error(f"   Response: {error_text[:500]}") # Truncate for safety
+                                    return web.Response(text=f"Failed to fetch MPD: {resp.status}\nResponse: {error_text[:1000]}", status=502)
+                                manifest_content = await resp.text()
+                        finally:
+                            # Close the temporary session if we created one for proxy
+                            if proxy and mpd_session and not mpd_session.closed:
+                                await mpd_session.close()
                         
                         # Build proxy base URL
                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
