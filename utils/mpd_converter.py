@@ -63,12 +63,9 @@ class MPDToHLSConverter:
             # Fallback per detection
             if not video_sets and not audio_sets:
                 for adaptation_set in root.findall('.//mpd:AdaptationSet', self.ns):
-                    # Check for MP4 or WebM mimetypes
-                    if (adaptation_set.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None or
-                        adaptation_set.find('mpd:Representation[@mimeType="video/webm"]', self.ns) is not None):
+                    if adaptation_set.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None:
                         video_sets.append(adaptation_set)
-                    elif (adaptation_set.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None or
-                          adaptation_set.find('mpd:Representation[@mimeType="audio/webm"]', self.ns) is not None):
+                    elif adaptation_set.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None:
                         audio_sets.append(adaptation_set)
 
             # --- GESTIONE AUDIO (EXT-X-MEDIA) ---
@@ -226,20 +223,6 @@ class MPDToHLSConverter:
                 except Exception as e:
                     logger.error(f"Errore parsing clearkey_param: {e}")
 
-            # --- DETECT VP9/VP8/WebM FOR TRANSCODING ---
-            # Check if the representation uses a codec that needs transcoding
-            needs_transcode = False
-            codecs = representation.get('codecs', '')
-            mime_type = representation.get('mimeType', '') or adaptation_set.get('mimeType', '')
-            
-            # Detect VP9/VP8/WebM/AV1 codecs that can't be remuxed to TS
-            if any(c in codecs.lower() for c in ['vp9', 'vp8', 'vp09', 'av01', 'av1']):
-                needs_transcode = True
-                logger.info(f"🎬 VP9/AV1 codec detected ({codecs}) - will transcode to H.264")
-            elif 'webm' in mime_type.lower():
-                needs_transcode = True
-                logger.info(f"🎬 WebM container detected ({mime_type}) - will transcode to H.264")
-
             # --- Check for forced TS extension ---
             # If ext=ts is passed OR default, we force server side logic to remux to TS
             # even if no key is present (skip_decrypt=1)
@@ -388,8 +371,7 @@ class MPDToHLSConverter:
                         if server_side_decryption:
                             # Usa endpoint di decrittazione
                             # Passiamo init_url perché serve per la concatenazione
-                            transcode_param = "&transcode=1" if needs_transcode else ""
-                            decrypt_url = f"{proxy_base}/decrypt/segment.ts?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{transcode_param}{header_params}"
+                            decrypt_url = f"{proxy_base}/decrypt/segment.ts?url={encoded_seg_url}&init_url={encoded_init_url}{decryption_params}{header_params}"
                             lines.append(decrypt_url)
                         else:
                             # Proxy standard - usa filename senza query string per evitare doppio ?
