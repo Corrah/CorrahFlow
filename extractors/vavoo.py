@@ -37,8 +37,8 @@ class VavooExtractor:
                 connector = ProxyConnector.from_url(proxy)
             else:
                 connector = TCPConnector(
-                    limit=20,
-                    limit_per_host=10,
+                    limit=0,
+                    limit_per_host=0,
                     keepalive_timeout=60,
                     enable_cleanup_closed=True,
                     force_close=False,

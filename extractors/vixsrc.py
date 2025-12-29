@@ -47,8 +47,8 @@ class VixSrcExtractor:
                 connector = ProxyConnector.from_url(proxy)
             else:
                 connector = TCPConnector(
-                    limit=10,
-                    limit_per_host=3,
+                    limit=0,
+                    limit_per_host=0,
                     keepalive_timeout=30,
                     enable_cleanup_closed=True,
                     force_close=False,
