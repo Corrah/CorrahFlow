@@ -12,7 +12,7 @@ import json
 import ssl
 import aiohttp
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ClientPayloadError, ServerDisconnectedError, ClientConnectionError
-from aiohttp_proxy import ProxyConnector
+from aiohttp_socks import ProxyConnector
 
 from config import GLOBAL_PROXIES, TRANSPORT_ROUTES, get_proxy_for_url, get_ssl_setting_for_url, API_PASSWORD, check_password, MPD_MODE
 from extractors.generic import GenericHLSExtractor, ExtractorError
@@ -469,12 +469,14 @@ class HLSProxy:
                         
                         # Use helper to get proxy-enabled session
                         mpd_session, should_close = await self._get_proxy_session(stream_url)
+                        final_mpd_url = stream_url  # Will be updated if redirected
                         
                         try:
                             async with mpd_session.get(stream_url, headers=stream_headers, ssl=ssl_context, allow_redirects=True) as resp:
-                                # Log final URL after redirects
-                                if str(resp.url) != stream_url:
-                                    logger.info(f"↪️ MPD redirected to: {resp.url}")
+                                # Capture final URL after redirects (use for segment URL construction)
+                                final_mpd_url = str(resp.url)
+                                if final_mpd_url != stream_url:
+                                    logger.info(f"↪️ MPD redirected to: {final_mpd_url}")
                                 
                                 if resp.status != 200:
                                     error_text = await resp.text()
@@ -545,13 +547,15 @@ class HLSProxy:
                         converter = MPDToHLSConverter()
                         if rep_id:
                             # Generate media playlist for specific representation
+                            # Use final_mpd_url (after redirects) for segment URL construction
                             hls_content = converter.convert_media_playlist(
-                                manifest_content, rep_id, proxy_base, stream_url, params, clearkey_param
+                                manifest_content, rep_id, proxy_base, final_mpd_url, params, clearkey_param
                             )
                         else:
                             # Generate master playlist
+                            # Use final_mpd_url (after redirects) for segment URL construction
                             hls_content = converter.convert_master_playlist(
-                                manifest_content, proxy_base, stream_url, params
+                                manifest_content, proxy_base, final_mpd_url, params
                             )
                         
                         return web.Response(
