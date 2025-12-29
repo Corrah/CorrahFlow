@@ -7,7 +7,7 @@ from typing import Dict, Any
 import random
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
-from aiohttp_proxy import ProxyConnector
+from aiohttp_socks import ProxyConnector
 
 logger = logging.getLogger(__name__)
 

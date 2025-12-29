@@ -12,7 +12,7 @@ import time
 from urllib.parse import urlparse, quote_plus
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, FormData
-from aiohttp_proxy import ProxyConnector
+from aiohttp_socks import ProxyConnector
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 

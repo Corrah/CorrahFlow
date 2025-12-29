@@ -10,7 +10,7 @@ import random
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import zstandard # Importa la libreria zstandard
-from aiohttp_proxy import ProxyConnector
+from aiohttp_socks import ProxyConnector
 
 logger = logging.getLogger(__name__)
 
