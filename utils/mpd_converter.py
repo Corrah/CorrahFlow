@@ -63,9 +63,12 @@ class MPDToHLSConverter:
             # Fallback per detection
             if not video_sets and not audio_sets:
                 for adaptation_set in root.findall('.//mpd:AdaptationSet', self.ns):
-                    if adaptation_set.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None:
+                    # Check for MP4 or WebM mimetypes
+                    if (adaptation_set.find('mpd:Representation[@mimeType="video/mp4"]', self.ns) is not None or
+                        adaptation_set.find('mpd:Representation[@mimeType="video/webm"]', self.ns) is not None):
                         video_sets.append(adaptation_set)
-                    elif adaptation_set.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None:
+                    elif (adaptation_set.find('mpd:Representation[@mimeType="audio/mp4"]', self.ns) is not None or
+                          adaptation_set.find('mpd:Representation[@mimeType="audio/webm"]', self.ns) is not None):
                         audio_sets.append(adaptation_set)
 
             # --- GESTIONE AUDIO (EXT-X-MEDIA) ---
