@@ -140,6 +140,30 @@ class HLSProxy:
             )
         return self.session
 
+    async def _get_proxy_session(self, url: str):
+        """Get a session with proxy support for the given URL.
+        
+        Returns: (session, should_close) tuple
+        - session: The aiohttp ClientSession to use
+        - should_close: True if caller should close session after use, False for shared session
+        """
+        proxy = get_proxy_for_url(url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
+        
+        if proxy:
+            logger.info(f"🌍 Using proxy for request: {proxy}")
+            try:
+                # Create a dedicated session with ProxyConnector
+                connector = ProxyConnector.from_url(proxy)
+                timeout = ClientTimeout(total=30)
+                session = ClientSession(timeout=timeout, connector=connector)
+                return session, True  # Caller should close this session
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to create proxy connector: {e}, falling back to direct")
+        
+        # Fallback to shared non-proxy session
+        return await self._get_session(), False
+
+
     async def get_extractor(self, url: str, request_headers: dict, host: str = None):
         """Ottiene l'estrattore appropriato per l'URL"""
         try:
@@ -438,26 +462,20 @@ class HLSProxy:
                             return web.Response(text="Legacy MPD converter not available", status=503)
                         
                         # Fetch the MPD manifest with proxy support
-                        proxy = get_proxy_for_url(stream_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
-                        
-                        # Fix SSL Verification for legacy requests
                         ssl_context = None
                         disable_ssl = get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES)
                         if disable_ssl:
                             ssl_context = False
                         
-                        # Create session with proxy if available
-                        mpd_session = None
+                        # Use helper to get proxy-enabled session
+                        mpd_session, should_close = await self._get_proxy_session(stream_url)
+                        
                         try:
-                            if proxy:
-                                logger.info(f"🌍 Fetching MPD via proxy: {proxy}")
-                                connector = ProxyConnector.from_url(proxy, ssl=ssl_context if ssl_context is False else None)
-                                timeout = ClientTimeout(total=30)
-                                mpd_session = ClientSession(timeout=timeout, connector=connector)
-                            else:
-                                mpd_session = await self._get_session()
-
-                            async with mpd_session.get(stream_url, headers=stream_headers, ssl=ssl_context) as resp:
+                            async with mpd_session.get(stream_url, headers=stream_headers, ssl=ssl_context, allow_redirects=True) as resp:
+                                # Log final URL after redirects
+                                if str(resp.url) != stream_url:
+                                    logger.info(f"↪️ MPD redirected to: {resp.url}")
+                                
                                 if resp.status != 200:
                                     error_text = await resp.text()
                                     logger.error(f"❌ Failed to fetch MPD. Status: {resp.status}, URL: {stream_url}")
@@ -466,8 +484,8 @@ class HLSProxy:
                                     return web.Response(text=f"Failed to fetch MPD: {resp.status}\nResponse: {error_text[:1000]}", status=502)
                                 manifest_content = await resp.text()
                         finally:
-                            # Close the temporary session if we created one for proxy
-                            if proxy and mpd_session and not mpd_session.closed:
+                            # Close the session if we created one for proxy
+                            if should_close and mpd_session and not mpd_session.closed:
                                 await mpd_session.close()
                         
                         # Build proxy base URL
@@ -1597,31 +1615,47 @@ class HLSProxy:
                     header_name = param_name[2:].replace('_', '-')
                     headers[header_name] = param_value
 
-            session = await self._get_session()
+            # Get proxy-enabled session for segment fetches
+            segment_session, should_close = await self._get_proxy_session(url)
 
-            # Parallel download of init and media segment
-            async def fetch_init():
-                if not init_url:
-                    return b""
-                if init_url in self.init_cache:
-                    return self.init_cache[init_url]
-                disable_ssl = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
-                async with session.get(init_url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status == 200:
-                        content = await resp.read()
-                        self.init_cache[init_url] = content
-                        return content
-                    return None
+            try:
+                # Parallel download of init and media segment
+                async def fetch_init():
+                    if not init_url:
+                        return b""
+                    if init_url in self.init_cache:
+                        return self.init_cache[init_url]
+                    disable_ssl = get_ssl_setting_for_url(init_url, TRANSPORT_ROUTES)
+                    try:
+                        async with segment_session.get(init_url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 200:
+                                content = await resp.read()
+                                self.init_cache[init_url] = content
+                                return content
+                            logger.error(f"❌ Init segment returned status {resp.status}: {init_url}")
+                            return None
+                    except Exception as e:
+                        logger.error(f"❌ Failed to fetch init segment: {e}")
+                        return None
 
-            async def fetch_segment():
-                disable_ssl = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
-                async with session.get(url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status == 200:
-                        return await resp.read()
-                    return None
+                async def fetch_segment():
+                    disable_ssl = get_ssl_setting_for_url(url, TRANSPORT_ROUTES)
+                    try:
+                        async with segment_session.get(url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                            if resp.status == 200:
+                                return await resp.read()
+                            logger.error(f"❌ Segment returned status {resp.status}: {url}")
+                            return None
+                    except Exception as e:
+                        logger.error(f"❌ Failed to fetch segment: {e}")
+                        return None
 
-            # Parallel fetch
-            init_content, segment_content = await asyncio.gather(fetch_init(), fetch_segment())
+                # Parallel fetch
+                init_content, segment_content = await asyncio.gather(fetch_init(), fetch_segment())
+            finally:
+                # Close the session if we created one for proxy
+                if should_close and segment_session and not segment_session.closed:
+                    await segment_session.close()
             
             if init_content is None and init_url:
                 logger.error(f"❌ Failed to fetch init segment")
