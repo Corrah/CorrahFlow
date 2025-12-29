@@ -1554,8 +1554,18 @@ class HLSProxy:
             if cache_key in self.prefetch_tasks:
                 self.prefetch_tasks.remove(cache_key)
 
-    async def _remux_to_ts(self, content):
-        """Converte segmenti (fMP4) in MPEG-TS usando FFmpeg pipe."""
+    async def _remux_to_ts(self, content, force_transcode=False):
+        """Converte segmenti (fMP4) in MPEG-TS usando FFmpeg pipe.
+        
+        Args:
+            content: Raw segment bytes (fMP4/WebM)
+            force_transcode: If True, transcode VP9/VP8 to H.264 instead of remux
+        """
+        # If force_transcode, use transcoding directly
+        if force_transcode:
+            return await self._transcode_to_ts(content)
+        
+        # Try fast remux first (works for H.264/AAC)
         try:
             cmd = [
                 'ffmpeg',
@@ -1584,14 +1594,74 @@ class HLSProxy:
                     logger.debug(f"FFmpeg remux finished with code {proc.returncode} but produced output (ignoring). Stderr: {stderr.decode()[:200]}")
                 return stdout
             
+            # Remux failed - check if it's a codec issue (VP9/VP8)
+            stderr_text = stderr.decode() if stderr else ""
             if proc.returncode != 0:
-                logger.error(f"❌ FFmpeg remux failed: {stderr.decode()}")
+                if 'vp9' in stderr_text.lower() or 'vp8' in stderr_text.lower() or 'webm' in stderr_text.lower() or 'opus' in stderr_text.lower() or 'vorbis' in stderr_text.lower():
+                    logger.info(f"🔄 VP9/WebM detected, falling back to transcoding...")
+                    return await self._transcode_to_ts(content)
+                logger.error(f"❌ FFmpeg remux failed: {stderr_text}")
                 return None
                 
             return stdout
         except Exception as e:
             logger.error(f"❌ Remux error: {e}")
             return None
+
+    async def _transcode_to_ts(self, content):
+        """Transcode VP9/VP8/WebM to H.264/AAC MPEG-TS.
+        
+        This is CPU-intensive but necessary for codecs that can't be remuxed to TS.
+        Uses ultrafast preset to minimize latency.
+        """
+        try:
+            logger.info("🎬 Transcoding VP9 → H.264...")
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', 'pipe:0',
+                # Video: H.264 with ultrafast preset for speed
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',               # Quality (lower = better, 18-28 reasonable range)
+                '-tune', 'zerolatency',     # Reduce latency
+                '-profile:v', 'high',       # H.264 High profile for best compatibility
+                '-level', '4.1',            # Level for 1080p support
+                # Audio: AAC
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '48000',             # Sample rate
+                '-ac', '2',                 # Stereo
+                # Output format
+                '-f', 'mpegts',
+                '-copyts',                  # Preserve timestamps
+                'pipe:1'
+            ]
+            
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await proc.communicate(input=content)
+            
+            if len(stdout) > 0:
+                if proc.returncode != 0:
+                    logger.debug(f"FFmpeg transcode finished with code {proc.returncode} but produced output. Stderr: {stderr.decode()[:200]}")
+                logger.info(f"✅ Transcoded to H.264/TS ({len(stdout)} bytes)")
+                return stdout
+            
+            if proc.returncode != 0:
+                logger.error(f"❌ FFmpeg transcode failed: {stderr.decode()}")
+                return None
+                
+            return stdout
+        except Exception as e:
+            logger.error(f"❌ Transcode error: {e}")
+            return None
+
 
     async def handle_decrypt_segment(self, request):
         """Decripta segmenti fMP4 lato server per ClearKey (legacy mode)."""
@@ -1696,6 +1766,9 @@ class HLSProxy:
             # Check if we should skip decryption (null key case)
             skip_decrypt = request.query.get('skip_decrypt') == '1'
             
+            # Check if we should force transcoding (for VP9/WebM streams)
+            force_transcode = request.query.get('transcode') == '1'
+            
             if skip_decrypt:
                 # Null key: just concatenate init + segment without decryption
                 logger.info(f"🔓 Skip decrypt mode - remuxing without decryption")
@@ -1706,8 +1779,8 @@ class HLSProxy:
                 loop = asyncio.get_event_loop()
                 combined_content = await loop.run_in_executor(None, decrypt_segment, init_content, segment_content, key_id, key)
 
-            # Leggero REMUX to TS
-            ts_content = await self._remux_to_ts(combined_content)
+            # Remux/Transcode to TS
+            ts_content = await self._remux_to_ts(combined_content, force_transcode=force_transcode)
             if not ts_content:
                  logger.warning("⚠️ Remux failed, serving raw fMP4")
                  # Fallback: serve fMP4 if remux fails
