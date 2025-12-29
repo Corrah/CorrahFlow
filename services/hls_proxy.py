@@ -122,8 +122,12 @@ class HLSProxy:
         # Prefetch queue for background downloading
         self.prefetch_tasks = set()
         
-        # Sessione condivisa per il proxy
+        # Sessione condivisa per il proxy (no proxy)
         self.session = None
+        
+        # Cache for proxy sessions (proxy_url -> session)
+        # This reuses connections for the same proxy to improve performance
+        self.proxy_sessions = {}
 
     async def _get_session(self):
         if self.session is None or self.session.closed:
@@ -143,20 +147,33 @@ class HLSProxy:
     async def _get_proxy_session(self, url: str):
         """Get a session with proxy support for the given URL.
         
+        Sessions are cached and reused for the same proxy to improve performance.
+        
         Returns: (session, should_close) tuple
         - session: The aiohttp ClientSession to use
-        - should_close: True if caller should close session after use, False for shared session
+        - should_close: Always False now since sessions are cached and reused
         """
         proxy = get_proxy_for_url(url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
         
         if proxy:
-            logger.info(f"🌍 Using proxy for request: {proxy}")
+            # Check if we have a cached session for this proxy
+            if proxy in self.proxy_sessions:
+                cached_session = self.proxy_sessions[proxy]
+                if not cached_session.closed:
+                    logger.debug(f"♻️ Reusing cached proxy session: {proxy}")
+                    return cached_session, False  # Reuse cached session
+                else:
+                    # Remove closed session from cache
+                    del self.proxy_sessions[proxy]
+            
+            # Create new session and cache it
+            logger.info(f"🌍 Creating proxy session: {proxy}")
             try:
-                # Create a dedicated session with ProxyConnector
                 connector = ProxyConnector.from_url(proxy)
                 timeout = ClientTimeout(total=30)
                 session = ClientSession(timeout=timeout, connector=connector)
-                return session, True  # Caller should close this session
+                self.proxy_sessions[proxy] = session  # Cache the session
+                return session, False  # Don't close - it's cached for reuse
             except Exception as e:
                 logger.warning(f"⚠️ Failed to create proxy connector: {e}, falling back to direct")
         
@@ -1831,6 +1848,12 @@ class HLSProxy:
         try:
             if self.session and not self.session.closed:
                 await self.session.close()
+            
+            # Close all cached proxy sessions
+            for proxy_url, session in list(self.proxy_sessions.items()):
+                if session and not session.closed:
+                    await session.close()
+            self.proxy_sessions.clear()
                 
             for extractor in self.extractors.values():
                 if hasattr(extractor, 'close'):
