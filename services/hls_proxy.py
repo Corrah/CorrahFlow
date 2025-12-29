@@ -131,10 +131,10 @@ class HLSProxy:
 
     async def _get_session(self):
         if self.session is None or self.session.closed:
-            # Optimized connector with larger pool for concurrent segment downloads
+            # Unlimited connections for maximum speed
             connector = TCPConnector(
-                limit=100,  # Max total connections
-                limit_per_host=30,  # Max per host
+                limit=0,  # Unlimited connections
+                limit_per_host=0,  # Unlimited per host
                 keepalive_timeout=60,  # Keep connections alive longer
                 enable_cleanup_closed=True
             )
@@ -169,7 +169,13 @@ class HLSProxy:
             # Create new session and cache it
             logger.info(f"🌍 Creating proxy session: {proxy}")
             try:
-                connector = ProxyConnector.from_url(proxy)
+                # Unlimited connections for maximum speed
+                connector = ProxyConnector.from_url(
+                    proxy,
+                    limit=0,  # Unlimited connections
+                    limit_per_host=0,  # Unlimited per host
+                    keepalive_timeout=60  # Keep connections alive longer
+                )
                 timeout = ClientTimeout(total=30)
                 session = ClientSession(timeout=timeout, connector=connector)
                 self.proxy_sessions[proxy] = session  # Cache the session
