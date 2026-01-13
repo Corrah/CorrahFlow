@@ -1,5 +1,7 @@
 # 🚀 EasyProxy - Server Proxy Universale per Streaming HLS
 
+⚠️ DLHD NOT WORKING ANYMORE!
+
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
 [![HLS](https://img.shields.io/badge/HLS-Streaming-red.svg)](https://developer.apple.com/streaming/)
