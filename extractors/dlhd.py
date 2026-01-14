@@ -764,87 +764,250 @@ class DLHDExtractor:
         except Exception as e:
             raise ExtractorError(f"Failed to extract lovecdn.ru stream: {e}")
 
+    def _extract_secret_key(self, iframe_html: str, channel_key: str | None = None) -> str | None:
+        """
+        Extract the HMAC secret key from the iframe HTML response.
+
+        The secret can be stored in multiple formats:
+        1. {p0:"...",p1:"..."} object with 2 parts that gets base64 decoded
+        2. {p0:"...",p1:"...",...,pN:"..."} object with N parts joined via Object.values()
+        3. Array of base64 parts: ["part1","part2",...] joined together
+        4. Array assigned to variable, then spread/joined: const _xxx=[...];let _yyy=[..._xxx].join('')
+
+        Args:
+            iframe_html: The HTML content from the iframe URL
+            channel_key: The channel key to exclude from results (avoid matching it)
+
+        Returns:
+            The decoded secret key or None if not found
+        """
+        candidates = []
+
+        # Pattern 1: {p0:"...",p1:"...","...} objects with multiple pN properties
+        # Matches: {p0:"WU9V",p1:"Ul9N",p2:"QVNU",p3:"RVJf",p4:"U0VD",p5:"UkVU"}
+        multi_p_pattern = r'\{(p0:\s*"[A-Za-z0-9+/=]+\"(?:,\s*p\d+:\s*"[A-Za-z0-9+/=]+")+)\}'
+
+        for match in re.finditer(multi_p_pattern, iframe_html):
+            obj_content = match.group(1)
+            # Extract all values in order (p0, p1, p2, ...)
+            parts = re.findall(r'p(\d+):\s*"([A-Za-z0-9+/=]+)"', obj_content)
+            if parts:
+                # Sort by index to ensure correct order
+                parts.sort(key=lambda x: int(x[0]))
+                combined = "".join(p[1] for p in parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Pattern 2: Array of base64 parts with spread join syntax
+        # Matches: const _68751e6257fc=["WU9V","Ul9N",...];let _e699285c513dd7=[..._68751e6257fc].join('')
+        # The key pattern is: array with short base64 strings (4-8 chars each) that decode to secret
+        spread_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\[\.\.\.\1\]\.join\([\'"][\'"]\)'
+
+        for match in re.finditer(spread_join_pattern, iframe_html):
+            arr_content = match.group(2)
+            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            if parts:
+                combined = "".join(parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Pattern 3: Array with .reduce((a,b)=>a+b) or .join('')
+        # Matches: const _6152b364=["cHJlbW","l1bTg4","MQ=="];let _7034f4=_6152b364.reduce((a,b)=>a+b)
+        reduce_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.(?:reduce\s*\(\s*\([^)]+\)\s*=>\s*[^)]+\)|join\s*\([\'"][\'"]\))'
+
+        for match in re.finditer(reduce_join_pattern, iframe_html):
+            arr_content = match.group(2)
+            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            if parts:
+                combined = "".join(parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Pattern 4: Array with .map(x=>x).join('')
+        # Matches: const _xxx=["...","..."];let _yyy=_xxx.map(x=>x).join('')
+        map_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.map\s*\([^)]+\)\.join\([\'"][\'"]\)'
+
+        for match in re.finditer(map_join_pattern, iframe_html):
+            arr_content = match.group(2)
+            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            if parts:
+                combined = "".join(parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Pattern 5: Simple array join - broader pattern as fallback
+        # Matches any: const _xxx=["base64",...];let _yyy=..._xxx... (with join/reduce somewhere)
+        simple_arr_pattern = r'const\s+_[a-f0-9]+\s*=\s*\[((?:"[A-Za-z0-9+/=]{2,8}"(?:,\s*)?){3,10})\]'
+
+        for match in re.finditer(simple_arr_pattern, iframe_html):
+            arr_content = match.group(1)
+            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            if parts and len(parts) >= 3:
+                combined = "".join(parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Filter and validate candidates
+        for decoded in candidates:
+            # Secret keys are readable strings with specific characteristics
+            if not (len(decoded) >= 8 and len(decoded) <= 64 and decoded.isprintable()):
+                continue
+            # Skip JWTs
+            if decoded.startswith("eyJ"):
+                continue
+            # Skip if it matches the channel_key (that's not the secret)
+            if channel_key and decoded == channel_key:
+                continue
+            # Skip country codes (2 chars like "PT")
+            if len(decoded) == 2 and decoded.isupper():
+                continue
+            return decoded
+
+        return None
+
+    def _extract_obfuscated_session_data(self, iframe_html: str) -> dict | None:
+        """
+        Extract session_token, channel_key, and secret_key from obfuscated JS.
+
+        Handles the pattern where variables use obfuscated names like var_[a-f0-9]+.
+
+        Args:
+            iframe_html: The HTML content from the iframe URL
+
+        Returns:
+            Dict with session_token, channel_key, secret_key, server_lookup_url or None
+        """
+        # Pattern to match obfuscated variable names with JWT token (session_token)
+        # First const after the block start, value starts with "eyJ"
+        token_pattern = r'const\s+var_[a-f0-9]+\s*=\s*"(eyJ[^"]+)"'
+        # Pattern to match channel_key: second const, right after the JWT token line
+        key_pattern = r'const\s+var_[a-f0-9]+\s*=\s*"eyJ[^"]+";[\s\n]*const\s+var_[a-f0-9]+\s*=\s*"([^"]+)"'
+
+        # Pattern to extract server lookup base URL from fetchWithRetry call
+        lookup_pattern = r"fetchWithRetry\s*\(\s*'([^']+server_lookup\?channel_id=)"
+
+        token_match = re.search(token_pattern, iframe_html)
+        key_match = re.search(key_pattern, iframe_html)
+        lookup_match = re.search(lookup_pattern, iframe_html)
+
+        if token_match and key_match:
+            result = {
+                "session_token": token_match.group(1),
+                "channel_key": key_match.group(1),
+            }
+            if lookup_match:
+                result["server_lookup_url"] = lookup_match.group(1) + result["channel_key"]
+
+            # Extract the HMAC secret key for computing nonce
+            secret_key = self._extract_secret_key(iframe_html, result["channel_key"])
+            if secret_key:
+                result["secret_key"] = secret_key
+
+            return result
+
+        return None
+
     async def _extract_new_auth_flow(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
-        """Gestisce il nuovo flusso di autenticazione con estrazione euristica."""
-        
+        """Gestisce il nuovo flusso di autenticazione con estrazione euristica e supporto per nonce."""
+
         logger.info("Tentativo rilevamento nuovo flusso auth obfuscated...")
-        
-        # 1. Estrazione euristica delle variabili
+
+        # 1. Prima prova l'estrazione strutturata per pattern obfuscati (var_[a-f0-9]+)
+        obfuscated_data = self._extract_obfuscated_session_data(iframe_content)
+
         params = {}
-        
-        # Cerca il JWT (inizia con eyJ...)
-        jwt_match = re.search(r'["\'](eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)["\']', iframe_content)
-        if jwt_match:
-            params['auth_token'] = jwt_match.group(1)
-            logger.info("✅ Trovato possibile JWT Token")
-            
-        # Cerca Channel Key (es: premium853) - o stringa alfanumerica di media lunghezza
-        # Spesso assegnata a una variabile corta
-        key_matches = re.finditer(r'["\']([a-z]+[0-9]+)["\']', iframe_content)
-        for m in key_matches:
-            val = m.group(1)
-            # Filtro euristico: deve sembrare una chiave canale (es. dad123, premium853, etc)
-            if re.match(r'^(premium|dad|sport|live)[0-9]+$', val) or '853' in val: # Harcoded check per debug
-                params['channel_key'] = val
-                logger.info(f"✅ Trovata possibile Channel Key: {val}")
-                break
-                
+        secret_key = None
+
+        if obfuscated_data:
+            logger.info("✅ Rilevato pattern obfuscated (var_xxx)")
+            params['auth_token'] = obfuscated_data.get('session_token')
+            params['channel_key'] = obfuscated_data.get('channel_key')
+            secret_key = obfuscated_data.get('secret_key')
+            if secret_key:
+                logger.info(f"✅ Secret key estratta per calcolo nonce")
+        else:
+            # Fallback: estrazione euristica originale
+            logger.info("Pattern obfuscated non trovato, provo estrazione euristica...")
+
+            # Cerca il JWT (inizia con eyJ...)
+            jwt_match = re.search(r'["\'](eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)["\']', iframe_content)
+            if jwt_match:
+                params['auth_token'] = jwt_match.group(1)
+                logger.info("✅ Trovato possibile JWT Token")
+
+            # Cerca Channel Key (es: premium853) - o stringa alfanumerica di media lunghezza
+            key_matches = re.finditer(r'["\']([a-z]+[0-9]+)["\']', iframe_content)
+            for m in key_matches:
+                val = m.group(1)
+                # Filtro euristico: deve sembrare una chiave canale
+                if re.match(r'^(premium|dad|sport|live)[0-9]+$', val):
+                    params['channel_key'] = val
+                    logger.info(f"✅ Trovata possibile Channel Key: {val}")
+                    break
+
+            # Prova a estrarre secret_key anche con estrazione euristica
+            if params.get('channel_key'):
+                secret_key = self._extract_secret_key(iframe_content, params['channel_key'])
+                if secret_key:
+                    logger.info(f"✅ Secret key estratta (fallback)")
+
         # Cerca Country (2 lettere maiuscole)
         country_match = re.search(r'["\']([A-Z]{2})["\']', iframe_content)
         if country_match:
             params['auth_country'] = country_match.group(1)
         else:
-             params['auth_country'] = 'DE' # Fallback
-             
+            params['auth_country'] = 'DE'  # Fallback
+
         # Cerca Timestamp (10 cifre)
         ts_matches = re.findall(r'["\']([0-9]{10})["\']', iframe_content)
         if ts_matches:
-            # Assumiamo che il primo sia iat/ts e il secondo exp, o viceversa.
-            # Prendi il più piccolo come TS corrente
             ts_values = sorted([int(x) for x in ts_matches])
             params['auth_ts'] = str(ts_values[0])
             if len(ts_values) > 1:
                 params['auth_expiry'] = str(ts_values[-1])
             else:
                 params['auth_expiry'] = str(ts_values[0] + 3600)
-        
+
         # Validazione minima
         if not params.get('auth_token'):
-             raise ExtractorError("Impossibile estrarre JWT dal nuovo flusso.")
-             
-        # Se manca channel key, prova a estrarla dall'URL
-        if not params.get('channel_key'):
-             # fallback da URL iframe o parametro passato
-             pass # Gestito dal chiamante se fallisce qui
-        
-        logger.info(f"✅ Parametri euristici estratti: {params}")
+            raise ExtractorError("Impossibile estrarre JWT dal nuovo flusso.")
 
-        # 2. SKIP auth2.php POST - Il nuovo flusso usa direttamente il token nel heartbeat
-        # L'errore "INVALID_TOKEN" su auth2.php suggerisce che quel passaggio è deprecato o rotto per questo flusso.
-        
-        logger.info("🚀 Skipping auth2.php POST (nuovo flusso detectato). Procedo diretto al heartbeat.")
-        
-        # 3. Server Lookup & Heartbeat Setup
-        auth_token = params['auth_token']
-        # Se channel_key non trovato nel JS, prova a derivarlo dall'URL iframe originale se possibile,
-        # ma qui assumiamo che il chiamante (extract) l'abbia passato o che lo troviamo.
-        # Per ora usiamo quello trovato o falliamo.
-        
+        # Se manca channel key, prova a estrarla dall'URL
         channel_key = params.get('channel_key')
         if not channel_key:
-             # Tentativo estremo: estrai da URL iframe
-             m_url = re.search(r'id=([0-9]+)', iframe_url)
-             if m_url:
-                 # Spesso la key è 'premium' + id
-                 channel_key = f"premium{m_url.group(1)}"
-                 logger.info(f"⚠️ Channel Key non trovata nel JS, indovinata dall'URL: {channel_key}")
-             else:
-                 raise ExtractorError("Channel Key mancante e non derivabile.")
+            m_url = re.search(r'id=([0-9]+)', iframe_url)
+            if m_url:
+                channel_key = f"premium{m_url.group(1)}"
+                logger.info(f"⚠️ Channel Key non trovata nel JS, indovinata dall'URL: {channel_key}")
+            else:
+                raise ExtractorError("Channel Key mancante e non derivabile.")
 
-        # 4. Server Lookup
+        logger.info(f"✅ Parametri estratti: channel_key={channel_key}, has_secret_key={secret_key is not None}")
+
+        # 2. SKIP auth2.php POST - Il nuovo flusso usa direttamente il token
+        logger.info("🚀 Skipping auth2.php POST (nuovo flusso). Procedo diretto al server lookup.")
+
+        auth_token = params['auth_token']
+
+        # 3. Server Lookup
         user_agent = headers.get('User-Agent')
         iframe_origin = f"https://{urlparse(iframe_url).netloc}"
-        
+
         server_lookup_url = f"{self.server_lookup_url}?channel_id={channel_key}"
         lookup_headers = {
             'User-Agent': user_agent,
@@ -852,30 +1015,30 @@ class DLHDExtractor:
             'Referer': iframe_url,
             'Origin': iframe_origin,
         }
-        
+
         logger.info(f"🔍 Server Lookup su: {server_lookup_url}")
         lookup_resp = await self._make_robust_request(server_lookup_url, headers=lookup_headers, retries=2)
         server_data = await lookup_resp.json()
         server_key = server_data.get('server_key')
-        
+
         if not server_key:
             raise ExtractorError(f"No server_key in response: {server_data}")
-        
+
         logger.info(f"✅ Server key: {server_key}")
-        
-        # 5. Heartbeat
+
+        # 4. Heartbeat
         heartbeat_url = self.heartbeat_url
-        
-        # Genera X-Client-Token (stessa logica)
+
+        # Genera X-Client-Token
         auth_country = params.get('auth_country', 'DE')
         auth_ts = params.get('auth_ts', str(int(time.time())))
         screen_res = "1920x1080"
-        timezone = "Europe/Berlin" 
+        timezone = "Europe/Berlin"
         lang = "en-US"
         fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
         sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
         client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
-        
+
         heartbeat_headers = {
             'User-Agent': user_agent,
             'Authorization': f'Bearer {auth_token}',
@@ -884,23 +1047,25 @@ class DLHDExtractor:
             'Referer': iframe_url,
             'Origin': iframe_origin,
         }
-        
+
         try:
+            session = await self._get_session()
             logger.info(f"💓 Invio heartbeat (diretto) a: {heartbeat_url}")
-            async with self.session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
+            async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
                 hb_text = await hb_resp.text()
                 logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
         except Exception as hb_e:
             logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
-            
-        # 6. Build Stream URL
+
+        # 5. Build Stream URL
         if server_key == 'top1/cdn':
             stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
         else:
             stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
-            
+
         logger.info(f"✅ Stream URL costruito: {stream_url}")
-        
+
+        # 6. Build headers con supporto per secret_key (per calcolo nonce lato proxy)
         stream_headers = {
             'User-Agent': user_agent,
             'Referer': iframe_url,
@@ -910,63 +1075,19 @@ class DLHDExtractor:
             'Heartbeat-Url': self.heartbeat_url,
             'X-Client-Token': client_token,
         }
-        
-        return {
-            "destination_url": stream_url,
-            "request_headers": stream_headers,
-            "mediaflow_endpoint": self.mediaflow_endpoint,
-            "expires_at": float(params.get('auth_expiry', 0))
-        }
 
-        try:
-            session = await self._get_session()
-            async with session.post(auth_url, data=form_data, headers=auth_headers, ssl=False) as auth_resp:
-                auth_resp.raise_for_status()
-                auth_data = await auth_resp.json()
-                if not (auth_data.get("valid") or auth_data.get("success")):
-                    raise ExtractorError(f"Initial auth failed with response: {auth_data}")
-            logger.info("New auth flow: Initial auth successful.")
-        except Exception as e:
-            raise ExtractorError(f"New auth flow failed during initial auth POST: {e}")
-
-        # 2. Server Lookup
-        # ✅ Usa server_lookup_url dinamico dal worker
-        server_lookup_url = f"{self.server_lookup_url}?channel_id={params['channel_key']}"
-        try:
-            lookup_resp = await self._make_robust_request(server_lookup_url, headers=headers)
-            server_data = await lookup_resp.json()
-            server_key = server_data.get('server_key')
-            if not server_key:
-                raise ExtractorError(f"No server_key in lookup response: {server_data}")
-            logger.info(f"New auth flow: Server lookup successful - Server key: {server_key}")
-        except Exception as e:
-            raise ExtractorError(f"New auth flow failed during server lookup: {e}")
-
-        # 3. Build final stream URL
-        channel_key = params['channel_key']
-        auth_token = params['auth_token']
-        # The JS logic uses .css, not .m3u8
-        if server_key == 'top1/cdn':
-            # Usa stream_cdn_template (es: https://top1.giokko.ru/top1/cdn/{CHANNEL}/mono.css)
-            stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
-        else:
-            # Usa stream_other_template (es: https://{SERVER_KEY}new.giokko.ru/{SERVER_KEY}/{CHANNEL}/mono.css)
-            stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
-        
-        logger.info(f'New auth flow: Constructed stream URL: {stream_url}')
-
-        stream_headers = {
-            'User-Agent': headers['User-Agent'],
-            'Referer': iframe_url,
-            'Origin': iframe_origin,
-            'Authorization': f'Bearer {auth_token}',
-            'X-Channel-Key': channel_key
-        }
+        # Se abbiamo la secret_key, la includiamo negli headers per il proxy
+        # Il proxy potrà usarla per calcolare X-Key-Timestamp e X-Key-Nonce
+        if secret_key:
+            stream_headers['X-Secret-Key'] = secret_key
+            logger.info("✅ Secret key inclusa negli headers per calcolo nonce")
 
         return {
             "destination_url": stream_url,
             "request_headers": stream_headers,
             "mediaflow_endpoint": self.mediaflow_endpoint,
+            "expires_at": float(params.get('auth_expiry', 0)),
+            "secret_key": secret_key  # Incluso anche nel result per uso diretto
         }
 
     async def invalidate_cache_for_url(self, url: str):
