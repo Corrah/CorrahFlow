@@ -773,6 +773,7 @@ class DLHDExtractor:
         2. {p0:"...",p1:"...",...,pN:"..."} object with N parts joined via Object.values()
         3. Array of base64 parts: ["part1","part2",...] joined together
         4. Array assigned to variable, then spread/joined: const _xxx=[...];let _yyy=[..._xxx].join('')
+        5. String concatenation: let _xxx="base64"+"base64"+...;
 
         Args:
             iframe_html: The HTML content from the iframe URL
@@ -785,12 +786,12 @@ class DLHDExtractor:
 
         # Pattern 1: {p0:"...",p1:"...","...} objects with multiple pN properties
         # Matches: {p0:"WU9V",p1:"Ul9N",p2:"QVNU",p3:"RVJf",p4:"U0VD",p5:"UkVU"}
-        multi_p_pattern = r'\{(p0:\s*"[A-Za-z0-9+/=]+\"(?:,\s*p\d+:\s*"[A-Za-z0-9+/=]+")+)\}'
+        multi_p_pattern = r'\{(p0:\s*\"[A-Za-z0-9+/=]+\"(?:,\s*p\d+:\s*\"[A-Za-z0-9+/=]+\")+)\}'
 
         for match in re.finditer(multi_p_pattern, iframe_html):
             obj_content = match.group(1)
             # Extract all values in order (p0, p1, p2, ...)
-            parts = re.findall(r'p(\d+):\s*"([A-Za-z0-9+/=]+)"', obj_content)
+            parts = re.findall(r'p(\d+):\s*\"([A-Za-z0-9+/=]+)\"', obj_content)
             if parts:
                 # Sort by index to ensure correct order
                 parts.sort(key=lambda x: int(x[0]))
@@ -801,14 +802,29 @@ class DLHDExtractor:
                 except Exception:
                     pass
 
-        # Pattern 2: Array of base64 parts with spread join syntax
+        # Pattern 2: String concatenation with + operator
+        # Matches: let _6924a5b8="WU9V"+"Ul9N"+"QVNU"+"RVJf"+"U0VD"+"UkVU";
+        string_concat_pattern = r'let\s+_[a-f0-9]+\s*=\s*(\"[A-Za-z0-9+/=]+\"(?:\s*\+\s*\"[A-Za-z0-9+/=]+\")+)\s*;'
+
+        for match in re.finditer(string_concat_pattern, iframe_html):
+            concat_expr = match.group(1)
+            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', concat_expr)
+            if parts:
+                combined = "".join(parts)
+                try:
+                    decoded = base64.b64decode(combined).decode("utf-8")
+                    candidates.append(decoded)
+                except Exception:
+                    pass
+
+        # Pattern 3: Array of base64 parts with spread join syntax
         # Matches: const _68751e6257fc=["WU9V","Ul9N",...];let _e699285c513dd7=[..._68751e6257fc].join('')
         # The key pattern is: array with short base64 strings (4-8 chars each) that decode to secret
-        spread_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\[\.\.\.\1\]\.join\([\'"][\'"]\)'
+        spread_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\[\.\.\.\1\]\.join\([\'\"]\[\'\"]\)'
 
         for match in re.finditer(spread_join_pattern, iframe_html):
             arr_content = match.group(2)
-            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
             if parts:
                 combined = "".join(parts)
                 try:
@@ -817,13 +833,13 @@ class DLHDExtractor:
                 except Exception:
                     pass
 
-        # Pattern 3: Array with .reduce((a,b)=>a+b) or .join('')
+        # Pattern 4: Array with .reduce((a,b)=>a+b) or .join('')
         # Matches: const _6152b364=["cHJlbW","l1bTg4","MQ=="];let _7034f4=_6152b364.reduce((a,b)=>a+b)
-        reduce_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.(?:reduce\s*\(\s*\([^)]+\)\s*=>\s*[^)]+\)|join\s*\([\'"][\'"]\))'
+        reduce_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.(?:reduce\s*\(\s*\([^)]+\)\s*=>\s*[^)]+\)|join\s*\([\'\"]\[\'\"]\))'
 
         for match in re.finditer(reduce_join_pattern, iframe_html):
             arr_content = match.group(2)
-            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
             if parts:
                 combined = "".join(parts)
                 try:
@@ -832,13 +848,13 @@ class DLHDExtractor:
                 except Exception:
                     pass
 
-        # Pattern 4: Array with .map(x=>x).join('')
+        # Pattern 5: Array with .map(x=>x).join('')
         # Matches: const _xxx=["...","..."];let _yyy=_xxx.map(x=>x).join('')
-        map_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:"[A-Za-z0-9+/=]+"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.map\s*\([^)]+\)\.join\([\'"][\'"]\)'
+        map_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.map\s*\([^)]+\)\.join\([\'\"]\[\'\"]\)'
 
         for match in re.finditer(map_join_pattern, iframe_html):
             arr_content = match.group(2)
-            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
             if parts:
                 combined = "".join(parts)
                 try:
@@ -847,13 +863,13 @@ class DLHDExtractor:
                 except Exception:
                     pass
 
-        # Pattern 5: Simple array join - broader pattern as fallback
+        # Pattern 6: Simple array join - broader pattern as fallback
         # Matches any: const _xxx=["base64",...];let _yyy=..._xxx... (with join/reduce somewhere)
-        simple_arr_pattern = r'const\s+_[a-f0-9]+\s*=\s*\[((?:"[A-Za-z0-9+/=]{2,8}"(?:,\s*)?){3,10})\]'
+        simple_arr_pattern = r'const\s+_[a-f0-9]+\s*=\s*\[((?:\"[A-Za-z0-9+/=]{2,8}\"(?:,\s*)?){3,10})\]'
 
         for match in re.finditer(simple_arr_pattern, iframe_html):
             arr_content = match.group(1)
-            parts = re.findall(r'"([A-Za-z0-9+/=]+)"', arr_content)
+            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
             if parts and len(parts) >= 3:
                 combined = "".join(parts)
                 try:
