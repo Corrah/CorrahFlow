@@ -795,6 +795,32 @@
                     </ul>
                 </div>
 
+                <!-- DVR Endpoint -->
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="endpoint-method">GET</span>
+                        <code class="endpoint-path">/record?url=&lt;STREAM_URL&gt;</code>
+                    </div>
+                    <p class="endpoint-description">
+                        Avvia la registrazione e ridirige allo stream live (DVR).
+                    </p>
+                    <ul class="feature-list">
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Registra mentre guardi</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Supporto nomi e durata (opzionali)</span>
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-bullet">•</span>
+                            <span>Gestione completa via <a href="/recordings" style="color: var(--text-link);">/recordings</a></span>
+                        </li>
+                    </ul>
+                    <div class="example-block">/record?url=https://stream.m3u8&name=LiveTV&duration=3600</div>
+                </div>
+
                 <!-- HLS Proxy -->
                 <div class="endpoint-card">
                     <div class="endpoint-header">
