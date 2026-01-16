@@ -976,6 +976,16 @@ class HLSProxy:
                     else:
                         logger.warning(f"⚠️ Could not compute nonce headers for {key_url}")
 
+                # ✅ NUOVO: Caso 'auth' - URL che contengono 'auth' richiedono headers speciali
+                if 'auth' in key_url.lower():
+                    logger.info(f"🔐 Detected 'auth' key URL, ensuring special headers are present")
+                    # Per URL auth, il provider richiede: Authorization, X-Channel-Key, X-User-Agent
+                    # Questi headers dovrebbero già essere stati passati tramite h_ params dal manifest rewriter
+                    # Assicuriamoci solo che X-User-Agent sia presente (usando User-Agent come fallback)
+                    if 'X-User-Agent' not in headers:
+                        headers['X-User-Agent'] = headers.get('User-Agent', headers.get('user-agent', 'Mozilla/5.0'))
+                    logger.info(f"🔐 Auth key headers: Authorization={'***' if headers.get('Authorization') else 'missing'}, X-Channel-Key={headers.get('X-Channel-Key', 'missing')}, X-User-Agent={headers.get('X-User-Agent', 'missing')}")
+
                 if heartbeat_url:
                     try:
                         

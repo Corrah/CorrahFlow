@@ -549,6 +549,7 @@ class DLHDExtractor:
                         'X-Channel-Key': channel_key,
                         #'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
                         'X-Client-Token': client_token,  # ✅ Token richiesto per heartbeat/chiavi
+                        'X-User-Agent': user_agent,  # ✅ Richiesto per auth key URLs
                     }
 
                     # ✅ Aggiungi cookies dalla sessione corrente
@@ -1045,6 +1046,7 @@ class DLHDExtractor:
             'X-Channel-Key': channel_key,
             #'Heartbeat-Url': self.heartbeat_url,
             'X-Client-Token': client_token,
+            'X-User-Agent': user_agent,  # ✅ Richiesto per auth key URLs
         }
 
         # Se abbiamo la secret_key, la includiamo negli headers per il proxy
