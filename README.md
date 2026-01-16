@@ -41,6 +41,8 @@
 | 🛠️ **Builder Integrato** | 📱 **Interfaccia Web** | 🔗 **Playlist Manager** |
 |--------------------------|----------------------|---------------------|
 | Combinazione playlist M3U | Dashboard completa | Gestione automatica headers |
+| **📼 DVR Integrato** | **⏯️ Smart Record** | **💾 Download** |
+| Registra mentre guardi | Start & Watch simultaneo | Scarica le tue registrazioni |
 
 ---
 
@@ -393,6 +395,11 @@ http://<server-ip>:7860/proxy/manifest.m3u8?url=<URL_STREAM>
 - **DLHD streams** - Flussi dinamici
 - **VIXSRC** - Streaming VOD
 - **Sportsonline** - Streaming sportivo
+- **Mixdrop** - File hosting video
+- **Voe** - Video hosting
+- **Streamtape** - Video hosting
+- **Orion** - Video streaming
+- **Freeshot/PopCDN** - CDN streaming
 
 **Esempi:**
 ```bash
