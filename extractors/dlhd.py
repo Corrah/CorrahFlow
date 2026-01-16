@@ -503,16 +503,16 @@ class DLHDExtractor:
                         'Origin': iframe_origin,
                     }
                     
-                    try:
-                        logger.info(f"💓 Invio heartbeat a: {heartbeat_url}")
-                        async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
-                            hb_text = await hb_resp.text()
-                            logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
-                            if hb_resp.status != 200:
-                                logger.warning(f"⚠️ Heartbeat non-200: {hb_resp.status}")
-                    except Exception as hb_e:
-                        logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
-                        # Non blocchiamo l'estrazione se il heartbeat fallisce
+                    # try:
+                    #     logger.info(f"💓 Invio heartbeat a: {heartbeat_url}")
+                    #     async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
+                    #         hb_text = await hb_resp.text()
+                    #         logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
+                    #         if hb_resp.status != 200:
+                    #             logger.warning(f"⚠️ Heartbeat non-200: {hb_resp.status}")
+                    # except Exception as hb_e:
+                    #     logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
+                    #     # Non blocchiamo l'estrazione se il heartbeat fallisce
                     
                     # Step 6: Build final URL
                     channel_key = params['channel_key']
@@ -547,7 +547,7 @@ class DLHDExtractor:
                         'Origin': iframe_origin,
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
-                        'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
+                        #'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
                         'X-Client-Token': client_token,  # ✅ Token richiesto per heartbeat/chiavi
                     }
 
@@ -1019,14 +1019,14 @@ class DLHDExtractor:
             'Origin': iframe_origin,
         }
 
-        try:
-            session = await self._get_session()
-            logger.info(f"💓 Invio heartbeat (diretto) a: {heartbeat_url}")
-            async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
-                hb_text = await hb_resp.text()
-                logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
-        except Exception as hb_e:
-            logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
+        # try:
+        #     session = await self._get_session()
+        #     logger.info(f"💓 Invio heartbeat (diretto) a: {heartbeat_url}")
+        #     async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
+        #         hb_text = await hb_resp.text()
+        #         logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
+        # except Exception as hb_e:
+        #     logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
 
         # 5. Build Stream URL
         if server_key == 'top1/cdn':
@@ -1043,7 +1043,7 @@ class DLHDExtractor:
             'Origin': iframe_origin,
             'Authorization': f'Bearer {auth_token}',
             'X-Channel-Key': channel_key,
-            'Heartbeat-Url': self.heartbeat_url,
+            #'Heartbeat-Url': self.heartbeat_url,
             'X-Client-Token': client_token,
         }
 
