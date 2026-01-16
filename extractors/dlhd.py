@@ -24,12 +24,22 @@ class ExtractorError(Exception):
 class DLHDExtractor:
     """DLHD Extractor con sessione persistente e gestione anti-bot avanzata"""
 
+    # Constants
+    USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+    CHANNEL_ID_PATTERNS = [
+        r'/premium(\d+)/mono',
+        r'/(?:watch|stream|cast|player)/stream-(\d+)\.php',
+        r'watch\.php\?id=(\d+)',
+        r'(?:%2F|/)stream-(\d+)\.php',
+        r'stream-(\d+)\.php',
+        r'[?&]id=(\d+)',
+        r'daddyhd\.php\?id=(\d+)',
+    ]
 
     def __init__(self, request_headers: dict, proxies: list = None):
         self.request_headers = request_headers
         self.base_headers = {
-            # ✅ User-Agent più recente per bypassare protezioni anti-bot
-            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+            "user-agent": self.USER_AGENT,
         }
         self.session = None
         self.mediaflow_endpoint = "hls_manifest_proxy"
@@ -145,6 +155,54 @@ class DLHDExtractor:
         except IOError as e:
             logger.error(f"❌ Errore durante il salvataggio della cache: {e}")
 
+    @staticmethod
+    def extract_channel_id(url: str) -> Optional[str]:
+        """Extract channel ID from URL using predefined patterns."""
+        for pattern in DLHDExtractor.CHANNEL_ID_PATTERNS:
+            match = re.search(pattern, url, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return None
+
+    def _build_stream_url(self, server_key: str, channel_key: str) -> str:
+        """Build stream URL using server key and channel key."""
+        if server_key == 'top1/cdn':
+            return self.stream_cdn_template.replace('{CHANNEL}', channel_key)
+        else:
+            return self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
+
+    def _build_stream_headers(self, iframe_url: str, channel_key: str, auth_token: str, secret_key: str = None) -> dict:
+        """Build standard stream headers."""
+        iframe_origin = f"https://{urlparse(iframe_url).netloc}"
+        headers = {
+            'User-Agent': self.USER_AGENT,
+            'Referer': iframe_url,
+            'Origin': iframe_origin,
+            'Authorization': f'Bearer {auth_token}',
+            'X-Channel-Key': channel_key,
+            'X-User-Agent': self.USER_AGENT,
+        }
+        if secret_key:
+            headers['X-Secret-Key'] = secret_key
+        return headers
+
+    async def _fetch_server_key(self, channel_key: str, iframe_url: str) -> str:
+        """Fetch server key for a given channel."""
+        server_lookup_url = f"{self.server_lookup_url}?channel_id={channel_key}"
+        iframe_origin = f"https://{urlparse(iframe_url).netloc}"
+        lookup_headers = {
+            'User-Agent': self.USER_AGENT,
+            'Accept': '*/*',
+            'Referer': iframe_url,
+            'Origin': iframe_origin,
+        }
+        lookup_resp = await self._make_robust_request(server_lookup_url, headers=lookup_headers, retries=2)
+        server_data = await lookup_resp.json()
+        server_key = server_data.get('server_key')
+        if not server_key:
+            raise ExtractorError(f"No server_key in response: {server_data}")
+        return server_key
+
     async def _fetch_iframe_hosts(self) -> bool:
         """Scarica la lista aggiornata degli host iframe."""
         # URL offuscato per evitare scraping statico
@@ -198,19 +256,19 @@ class DLHDExtractor:
         """Applica headers specifici per il dominio stream automaticamente"""
         headers = base_headers.copy()
         parsed_url = urlparse(url)
-        
+
         # Usa base_domain dinamico dal worker
         stream_domain = self.base_domain
-        
+
         if stream_domain in parsed_url.netloc:
             origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
             special_headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+                'User-Agent': self.USER_AGENT,
                 'Referer': origin,
                 'Origin': origin
             }
             headers.update(special_headers)
-        
+
         return headers
 
     async def _handle_response_content(self, response: aiohttp.ClientResponse) -> str:
@@ -329,17 +387,14 @@ class DLHDExtractor:
         
         async def get_stream_data_direct(channel_id: str, hosts_to_try: list) -> Dict[str, Any]:
             """Estrazione diretta dall'iframe senza passare per la pagina principale."""
-            
-            user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
-            
             last_error = None
             for iframe_host in hosts_to_try:
                 try:
                     iframe_url = f'https://{iframe_host}/premiumtv/daddyhd.php?id={channel_id}'
                     logger.info(f"🔍 Tentativo estrazione da: {iframe_url}")
-                    
+
                     embed_headers = {
-                        'User-Agent': user_agent,
+                        'User-Agent': self.USER_AGENT,
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.9',
                         'Referer': 'https://dlhd.dad/',
@@ -355,7 +410,7 @@ class DLHDExtractor:
                     # Check if it's lovecdn
                     if 'lovecdn.ru' in js_content:
                         logger.info("Detected lovecdn.ru content - using alternative extraction")
-                        result = await self._extract_lovecdn_stream(iframe_url, js_content, embed_headers)
+                        result = await self._extract_lovecdn_stream(iframe_url, js_content)
                         return result
                     
                     # Step 2: Extract auth params
@@ -376,7 +431,7 @@ class DLHDExtractor:
                         logger.warning(f"⚠️ Parametri mancanti da {iframe_host}: {missing_params}. Tentativo con nuovo flusso euristico...")
                         try:
                             # Se mancano i parametri standard, prova il nuovo flusso euristico/obfuscated
-                            result = await self._extract_new_auth_flow(iframe_url, js_content, embed_headers)
+                            result = await self._extract_new_auth_flow(iframe_url, js_content)
                             return result
                         except Exception as e:
                             logger.warning(f"⚠️ Nuovo flusso fallito: {e}")
@@ -399,7 +454,7 @@ class DLHDExtractor:
                     form_data.add_field('token', params['auth_token'])
                     
                     auth_headers = {
-                        'User-Agent': user_agent,
+                        'User-Agent': self.USER_AGENT,
                         'Accept': '*/*',
                         'Accept-Language': 'en-US,en;q=0.9',
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -434,7 +489,7 @@ class DLHDExtractor:
                             # ✅ TENTATIVO NUOVO FLUSSO se Auth fallisce (es. token invalidi)
                             logger.warning("⚠️ Auth fallito con metodo standard. Tento nuovo flusso euristico...")
                             try:
-                                result = await self._extract_new_auth_flow(iframe_url, js_content, embed_headers)
+                                result = await self._extract_new_auth_flow(iframe_url, js_content)
                                 return result
                             except Exception as e:
                                 logger.warning(f"⚠️ Nuovo flusso (fallback) fallito: {e}")
@@ -463,45 +518,19 @@ class DLHDExtractor:
                     logger.info(f"🍪 Tutti i cookies nella sessione dopo auth: {all_session_cookies}")
                     
                     # Step 4: Server Lookup
-                    # ✅ Usa server_lookup_url dinamico dal worker
-                    server_lookup_url = f"{self.server_lookup_url}?channel_id={params['channel_key']}"
-                    lookup_headers = {
-                        'User-Agent': user_agent,
-                        'Accept': '*/*',
-                        'Referer': iframe_url,
-                        'Origin': iframe_origin,
-                    }
-                    
-                    lookup_resp = await self._make_robust_request(server_lookup_url, headers=lookup_headers, retries=2)
-                    server_data = await lookup_resp.json()
-                    server_key = server_data.get('server_key')
-                    
-                    if not server_key:
-                        last_error = ExtractorError(f"No server_key in response: {server_data}")
-                        continue
-
+                    server_key = await self._fetch_server_key(params['channel_key'], iframe_url)
                     logger.info(f"✅ Server key: {server_key}")
 
                     channel_key = params['channel_key']
                     auth_token = params['auth_token']
 
-                    # Build final URL
-                    if server_key == 'top1/cdn':
-                        stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
-                    else:
-                        stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
-
+                    # Build final URL using helper method
+                    stream_url = self._build_stream_url(server_key, channel_key)
                     logger.info(f"✅ Stream URL costruito: {stream_url}")
 
-
-                    stream_headers = {
-                        'User-Agent': user_agent,
-                        'Referer': iframe_url,
-                        'Origin': iframe_origin,
-                        'Authorization': f'Bearer {auth_token}',
-                        'X-Channel-Key': channel_key,
-                        'X-User-Agent': user_agent,
-                    }
+                    # Build headers using helper method
+                    stream_headers = self._build_stream_headers(iframe_url, channel_key, auth_token)
+                    stream_headers['X-User-Agent'] = self.USER_AGENT  # Add for compatibility
 
                     # ✅ Aggiungi cookies dalla sessione corrente
                     if self.session:
@@ -540,25 +569,8 @@ class DLHDExtractor:
             
             raise ExtractorError(f"Tutti gli host iframe hanno fallito. Ultimo errore: {last_error}")
 
-        # Helper per estrarre ID (spostato fuori per pulizia scope)
-        def extract_channel_id(u: str) -> Optional[str]:
-            patterns = [
-                r'/premium(\d+)/mono',
-                r'/(?:watch|stream|cast|player)/stream-(\d+)\.php',
-                r'watch\.php\?id=(\d+)',
-                r'(?:%2F|/)stream-(\d+)\.php',
-                r'stream-(\d+)\.php',
-                r'[?&]id=(\d+)',
-                r'daddyhd\.php\?id=(\d+)',
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, u, re.IGNORECASE)
-                if match:
-                    return match.group(1)
-            return None
-
         try:
-            channel_id = extract_channel_id(url)
+            channel_id = self.extract_channel_id(url)
             if not channel_id:
                 raise ExtractorError(f"Impossibile estrarre channel ID da {url}")
 
@@ -646,7 +658,7 @@ class DLHDExtractor:
                 logger.exception(f"Estrazione DLHD completamente fallita per URL {url}")
             raise ExtractorError(f"Estrazione DLHD completamente fallita: {str(e)}")
 
-    async def _extract_lovecdn_stream(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
+    async def _extract_lovecdn_stream(self, iframe_url: str, iframe_content: str) -> Dict[str, Any]:
         """
         Estrattore alternativo per iframe lovecdn.ru che usa un formato diverso.
         """
@@ -696,7 +708,7 @@ class DLHDExtractor:
             # Usa iframe URL come referer
             iframe_origin = f"https://{urlparse(iframe_url).netloc}"
             stream_headers = {
-                'User-Agent': headers['User-Agent'],
+                'User-Agent': self.USER_AGENT,
                 'Referer': iframe_url,
                 'Origin': iframe_origin
             }
@@ -845,7 +857,7 @@ class DLHDExtractor:
 
         return None
 
-    async def _extract_new_auth_flow(self, iframe_url: str, iframe_content: str, headers: dict) -> Dict[str, Any]:
+    async def _extract_new_auth_flow(self, iframe_url: str, iframe_content: str) -> Dict[str, Any]:
         """Gestisce il nuovo flusso di autenticazione con estrazione euristica e supporto per nonce."""
 
         logger.info("Tentativo rilevamento nuovo flusso auth obfuscated...")
@@ -927,50 +939,19 @@ class DLHDExtractor:
 
         auth_token = params['auth_token']
 
-        # 3. Server Lookup
-        user_agent = headers.get('User-Agent')
-        iframe_origin = f"https://{urlparse(iframe_url).netloc}"
-
-        server_lookup_url = f"{self.server_lookup_url}?channel_id={channel_key}"
-        lookup_headers = {
-            'User-Agent': user_agent,
-            'Accept': '*/*',
-            'Referer': iframe_url,
-            'Origin': iframe_origin,
-        }
-
-        logger.info(f"🔍 Server Lookup su: {server_lookup_url}")
-        lookup_resp = await self._make_robust_request(server_lookup_url, headers=lookup_headers, retries=2)
-        server_data = await lookup_resp.json()
-        server_key = server_data.get('server_key')
-
-        if not server_key:
-            raise ExtractorError(f"No server_key in response: {server_data}")
-
+        # 3. Server Lookup - use helper method
+        server_key = await self._fetch_server_key(channel_key, iframe_url)
         logger.info(f"✅ Server key: {server_key}")
 
-        # Build Stream URL
-        if server_key == 'top1/cdn':
-            stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
-        else:
-            stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
-
+        # Build Stream URL - use helper method
+        stream_url = self._build_stream_url(server_key, channel_key)
         logger.info(f"✅ Stream URL costruito: {stream_url}")
 
-        # Build headers con supporto per secret_key (per calcolo nonce lato proxy)
-        stream_headers = {
-            'User-Agent': user_agent,
-            'Referer': iframe_url,
-            'Origin': iframe_origin,
-            'Authorization': f'Bearer {auth_token}',
-            'X-Channel-Key': channel_key,
-            'X-User-Agent': user_agent,
-        }
+        # Build headers - use helper method
+        stream_headers = self._build_stream_headers(iframe_url, channel_key, auth_token, secret_key)
+        stream_headers['X-User-Agent'] = self.USER_AGENT  # Add for compatibility
 
-        # Se abbiamo la secret_key, la includiamo negli headers per il proxy
-        # Il proxy potrà usarla per calcolare X-Key-Timestamp e X-Key-Nonce
         if secret_key:
-            stream_headers['X-Secret-Key'] = secret_key
             logger.info("✅ Secret key inclusa negli headers per calcolo nonce")
 
         return {
@@ -986,20 +967,7 @@ class DLHDExtractor:
         Invalida la cache per un URL specifico.
         Questa funzione viene chiamata da app.py quando rileva un errore (es. fallimento chiave AES).
         """
-        def extract_channel_id_internal(u: str) -> Optional[str]:
-            patterns = [
-                r'/premium(\d+)/mono\.m3u8$',
-                r'/(?:watch|stream|cast|player)/stream-(\d+)\.php',
-                r'watch\.php\?id=(\d+)',
-                r'(?:%2F|/)stream-(\d+)\.php',
-                r'stream-(\d+)\.php'
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, u, re.IGNORECASE)
-                if match: return match.group(1)
-            return None
-
-        channel_id = extract_channel_id_internal(url)
+        channel_id = self.extract_channel_id(url)
         if channel_id and channel_id in self._stream_data_cache:
             del self._stream_data_cache[channel_id]
             self._save_cache()
