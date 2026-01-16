@@ -768,12 +768,10 @@ class DLHDExtractor:
         """
         Extract the HMAC secret key from the iframe HTML response.
 
-        The secret can be stored in multiple formats:
-        1. {p0:"...",p1:"..."} object with 2 parts that gets base64 decoded
-        2. {p0:"...",p1:"...",...,pN:"..."} object with N parts joined via Object.values()
-        3. Array of base64 parts: ["part1","part2",...] joined together
-        4. Array assigned to variable, then spread/joined: const _xxx=[...];let _yyy=[..._xxx].join('')
-        5. String concatenation: let _xxx="base64"+"base64"+...;
+        This function dynamically finds the secret key by:
+        1. Locating the nonce calculation code block
+        2. Extracting the variable name used in HMAC-SHA256 for the resource
+        3. Finding the definition of that variable and decoding its base64 value
 
         Args:
             iframe_html: The HTML content from the iframe URL
@@ -782,119 +780,76 @@ class DLHDExtractor:
         Returns:
             The decoded secret key or None if not found
         """
-        candidates = []
 
-        # Pattern 1: {p0:"...",p1:"...","...} objects with multiple pN properties
-        # Matches: {p0:"WU9V",p1:"Ul9N",p2:"QVNU",p3:"RVJf",p4:"U0VD",p5:"UkVU"}
-        multi_p_pattern = r'\{(p0:\s*\"[A-Za-z0-9+/=]+\"(?:,\s*p\d+:\s*\"[A-Za-z0-9+/=]+\")+)\}'
+        # Step 1: Find the nonce calculation block to identify the secret variable name
+        # Pattern: CryptoJS.HmacSHA256(resource,_SECRET_VAR).toString()
+        # This appears in the nonce calculation loop
+        hmac_pattern = r'CryptoJS\.HmacSHA256\(resource,\s*([a-zA-Z_$][\w$]*)\)'
+        hmac_match = re.search(hmac_pattern, iframe_html)
 
-        for match in re.finditer(multi_p_pattern, iframe_html):
-            obj_content = match.group(1)
-            # Extract all values in order (p0, p1, p2, ...)
-            parts = re.findall(r'p(\d+):\s*\"([A-Za-z0-9+/=]+)\"', obj_content)
-            if parts:
-                # Sort by index to ensure correct order
-                parts.sort(key=lambda x: int(x[0]))
-                combined = "".join(p[1] for p in parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        if not hmac_match:
+            # Fallback: try finding HMAC with a variable in any context
+            hmac_pattern_general = r'HmacSHA256\([^,]+,\s*([a-zA-Z_$][\w$]*)\)'
+            hmac_match = re.search(hmac_pattern_general, iframe_html)
 
-        # Pattern 2: String concatenation with + operator
-        # Matches: let _6924a5b8="WU9V"+"Ul9N"+"QVNU"+"RVJf"+"U0VD"+"UkVU";
-        string_concat_pattern = r'let\s+_[a-f0-9]+\s*=\s*(\"[A-Za-z0-9+/=]+\"(?:\s*\+\s*\"[A-Za-z0-9+/=]+\")+)\s*;'
+        if not hmac_match:
+            return None
 
-        for match in re.finditer(string_concat_pattern, iframe_html):
-            concat_expr = match.group(1)
-            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', concat_expr)
-            if parts:
-                combined = "".join(parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        secret_var_name = hmac_match.group(1)
 
-        # Pattern 3: Array of base64 parts with spread join syntax
-        # Matches: const _68751e6257fc=["WU9V","Ul9N",...];let _e699285c513dd7=[..._68751e6257fc].join('')
-        # The key pattern is: array with short base64 strings (4-8 chars each) that decode to secret
-        spread_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\[\.\.\.\1\]\.join\([\'\"]\[\'\"]\)'
+        # Step 2: Find the line containing "let _varname=" and extract base64 from that line
+        # Two cases:
+        # Case A: let _var="part1"+"part2"+...;
+        # Case B: const _array=["part1","part2",...];let _var=_array.map(x=>x).join('');
 
-        for match in re.finditer(spread_join_pattern, iframe_html):
-            arr_content = match.group(2)
-            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
-            if parts:
-                combined = "".join(parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        # Pattern to find the line with "let _varname="
+        let_pattern = rf'let\s+{re.escape(secret_var_name)}\s*='
+        let_match = re.search(let_pattern, iframe_html)
 
-        # Pattern 4: Array with .reduce((a,b)=>a+b) or .join('')
-        # Matches: const _6152b364=["cHJlbW","l1bTg4","MQ=="];let _7034f4=_6152b364.reduce((a,b)=>a+b)
-        reduce_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.(?:reduce\s*\(\s*\([^)]+\)\s*=>\s*[^)]+\)|join\s*\([\'\"]\[\'\"]\))'
+        if not let_match:
+            return None
 
-        for match in re.finditer(reduce_join_pattern, iframe_html):
-            arr_content = match.group(2)
-            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
-            if parts:
-                combined = "".join(parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        # Get the line containing the let statement
+        # Find the start of the line (newline before the match)
+        line_start = let_match.start()
+        while line_start > 0 and iframe_html[line_start - 1] not in '\n\r':
+            line_start -= 1
 
-        # Pattern 5: Array with .map(x=>x).join('')
-        # Matches: const _xxx=["...","..."];let _yyy=_xxx.map(x=>x).join('')
-        map_join_pattern = r'const\s+(_[a-f0-9]+)\s*=\s*\[((?:\"[A-Za-z0-9+/=]+\"(?:,\s*)?)+)\]\s*;\s*let\s+_[a-f0-9]+\s*=\s*\1\.map\s*\([^)]+\)\.join\([\'\"]\[\'\"]\)'
+        # Find the end of the line (semicolon or newline)
+        line_end = iframe_html.find(';', let_match.end())
+        if line_end == -1:
+            # Try to find newline
+            line_end = iframe_html.find('\n', let_match.end())
+            if line_end == -1:
+                line_end = len(iframe_html)
 
-        for match in re.finditer(map_join_pattern, iframe_html):
-            arr_content = match.group(2)
-            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
-            if parts:
-                combined = "".join(parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        line_content = iframe_html[line_start:line_end + 1]
 
-        # Pattern 6: Simple array join - broader pattern as fallback
-        # Matches any: const _xxx=["base64",...];let _yyy=..._xxx... (with join/reduce somewhere)
-        simple_arr_pattern = r'const\s+_[a-f0-9]+\s*=\s*\[((?:\"[A-Za-z0-9+/=]{2,8}\"(?:,\s*)?){3,10})\]'
+        # Extract all quoted base64 strings from this line
+        base64_parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', line_content)
 
-        for match in re.finditer(simple_arr_pattern, iframe_html):
-            arr_content = match.group(1)
-            parts = re.findall(r'\"([A-Za-z0-9+/=]+)\"', arr_content)
-            if parts and len(parts) >= 3:
-                combined = "".join(parts)
-                try:
-                    decoded = base64.b64decode(combined).decode("utf-8")
-                    candidates.append(decoded)
-                except Exception:
-                    pass
+        if not base64_parts:
+            return None
 
-        # Filter and validate candidates
-        for decoded in candidates:
-            # Secret keys are readable strings with specific characteristics
-            if not (len(decoded) >= 8 and len(decoded) <= 64 and decoded.isprintable()):
-                continue
-            # Skip JWTs
-            if decoded.startswith("eyJ"):
-                continue
+        combined_b64 = "".join(base64_parts)
+
+        try:
+            decoded = base64.b64decode(combined_b64).decode("utf-8")
+
+            # Basic validation - secret keys are typically hex strings of reasonable length
+            if len(decoded) < 8 or len(decoded) > 128:
+                return None
+
             # Skip if it matches the channel_key (that's not the secret)
             if channel_key and decoded == channel_key:
-                continue
-            # Skip country codes (2 chars like "PT")
-            if len(decoded) == 2 and decoded.isupper():
-                continue
+                return None
+
             return decoded
+        except Exception:
+            pass
 
         return None
+
 
     def _extract_obfuscated_session_data(self, iframe_html: str) -> dict | None:
         """
