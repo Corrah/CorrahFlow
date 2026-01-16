@@ -493,16 +493,6 @@ class DLHDExtractor:
 
                     logger.info(f"✅ Stream URL costruito: {stream_url}")
 
-                    # Genera X-Client-Token
-                    auth_ts = params.get('auth_ts', '')
-                    auth_country = params.get('auth_country', 'IT')
-                    screen_res = "1920x1080"
-                    timezone = "Europe/Rome"
-                    lang = "it-IT"
-                    fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
-                    sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
-                    client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
-                    logger.info(f"🔐 X-Client-Token generato per channel {channel_key}")
 
                     stream_headers = {
                         'User-Agent': user_agent,
@@ -510,7 +500,6 @@ class DLHDExtractor:
                         'Origin': iframe_origin,
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
-                        'X-Client-Token': client_token,
                         'X-User-Agent': user_agent,
                     }
 
@@ -960,16 +949,6 @@ class DLHDExtractor:
 
         logger.info(f"✅ Server key: {server_key}")
 
-        # Genera X-Client-Token
-        auth_country = params.get('auth_country', 'DE')
-        auth_ts = params.get('auth_ts', str(int(time.time())))
-        screen_res = "1920x1080"
-        timezone = "Europe/Berlin"
-        lang = "en-US"
-        fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
-        sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
-        client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
-
         # Build Stream URL
         if server_key == 'top1/cdn':
             stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
@@ -985,7 +964,6 @@ class DLHDExtractor:
             'Origin': iframe_origin,
             'Authorization': f'Bearer {auth_token}',
             'X-Channel-Key': channel_key,
-            'X-Client-Token': client_token,
             'X-User-Agent': user_agent,
         }
 
