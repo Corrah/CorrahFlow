@@ -296,6 +296,17 @@ Questi endpoint gestiscono il proxying effettivo dei flussi video.
 - `h_<header>`: Headers personalizzati (es. `h_User-Agent=VLC`).
 - `clearkey`: Chiavi di decrittazione DRM in formato `KID:KEY` (per stream MPD protetti).
 
+### 📼 DVR / Registrazioni
+
+Il server include un sistema di registrazione (DVR) completo.
+
+- **`/recordings`**: Interfaccia Web per gestire le registrazioni.
+- **`/record`**: Endpoint "smart" per iniziare a registrare e guardare contemporaneamente.
+  - Esempio: `/record?url=STREAM_URL&name=Film` -> Avvia rec e ridirige allo stream.
+- **`/api/recordings/start` (POST)**: Avvia una registrazione in background.
+- **`/api/recordings/{id}/stream`**: Guarda una registrazione in corso o completata.
+- **`/api/recordings/{id}/download`**: Scarica il file registrato.
+
 ### 🛠️ Utilities
 
 - **`/builder`**: Interfaccia Web per il Playlist Builder.
