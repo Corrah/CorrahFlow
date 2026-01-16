@@ -44,21 +44,19 @@ class DLHDExtractor:
         
         # ✅ Lista host iframe (caricata da cache o vuota)
         self.iframe_hosts = cache_data.get('hosts', [])
-        
+
         # ✅ Configurazione server dinamica dal worker (usando TEMPLATE completi)
         # Tutti i valori provengono dal worker, i fallback sono solo per il primo avvio
         self.auth_url = cache_data.get('auth_url', 'https://security.kiko2.ru/auth2.php')
         self.stream_cdn_template = cache_data.get('stream_cdn_template', 'https://top1.kiko2.ru/top1/cdn/{CHANNEL}/mono.css')
         self.stream_other_template = cache_data.get('stream_other_template', 'https://{SERVER_KEY}new.kiko2.ru/{SERVER_KEY}/{CHANNEL}/mono.css')
-        self.heartbeat_url = cache_data.get('heartbeat_url', 'https://chevy.kiko2.ru/heartbeat')
         self.server_lookup_url = cache_data.get('server_lookup_url', 'https://chevy.kiko2.ru/server_lookup')
         self.base_domain = cache_data.get('base_domain', 'kiko2.ru')
-        
+
         logger.info(f"Hosts caricati all'avvio: {self.iframe_hosts}")
         logger.info(f"Auth URL: {self.auth_url}")
         logger.info(f"Stream CDN Template: {self.stream_cdn_template}")
         logger.info(f"Stream Other Template: {self.stream_other_template}")
-        logger.info(f"Heartbeat URL: {self.heartbeat_url}")
         logger.info(f"Server Lookup URL: {self.server_lookup_url}")
         logger.info(f"Base Domain: {self.base_domain}")
 
@@ -131,14 +129,12 @@ class DLHDExtractor:
         """Salva lo stato corrente della cache su un file, codificando il contenuto in Base64."""
         try:
             with open(self.cache_file, 'w', encoding='utf-8') as f:
-                # Struttura completa
                 cache_data = {
                     'hosts': self.iframe_hosts,
                     'streams': self._stream_data_cache,
                     'auth_url': self.auth_url,
                     'stream_cdn_template': self.stream_cdn_template,
                     'stream_other_template': self.stream_other_template,
-                    'heartbeat_url': self.heartbeat_url,
                     'server_lookup_url': self.server_lookup_url,
                     'base_domain': self.base_domain
                 }
@@ -175,9 +171,6 @@ class DLHDExtractor:
                         elif line.startswith('#STREAM_OTHER_TEMPLATE:'):
                             self.stream_other_template = line.replace('#STREAM_OTHER_TEMPLATE:', '').strip()
                             logger.info(f"✅ Stream Other Template aggiornato: {self.stream_other_template}")
-                        elif line.startswith('#HEARTBEAT_URL:'):
-                            self.heartbeat_url = line.replace('#HEARTBEAT_URL:', '').strip()
-                            logger.info(f"✅ Heartbeat URL aggiornato: {self.heartbeat_url}")
                         elif line.startswith('#SERVER_LOOKUP_URL:'):
                             self.server_lookup_url = line.replace('#SERVER_LOOKUP_URL:', '').strip()
                             logger.info(f"✅ Server Lookup URL aggiornato: {self.server_lookup_url}")
@@ -486,70 +479,39 @@ class DLHDExtractor:
                     if not server_key:
                         last_error = ExtractorError(f"No server_key in response: {server_data}")
                         continue
-                    
+
                     logger.info(f"✅ Server key: {server_key}")
-                    
-                    # Step 5: Heartbeat - NECESSARIO per stabilire la sessione prima di ricevere le chiavi
+
                     channel_key = params['channel_key']
                     auth_token = params['auth_token']
-                    
-                    # ✅ Usa heartbeat_url dinamico dal worker
-                    heartbeat_url = self.heartbeat_url
-                    heartbeat_headers = {
-                        'User-Agent': user_agent,
-                        'Authorization': f'Bearer {auth_token}',
-                        'X-Channel-Key': channel_key,
-                        'Referer': iframe_url,
-                        'Origin': iframe_origin,
-                    }
-                    
-                    # try:
-                    #     logger.info(f"💓 Invio heartbeat a: {heartbeat_url}")
-                    #     async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
-                    #         hb_text = await hb_resp.text()
-                    #         logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
-                    #         if hb_resp.status != 200:
-                    #             logger.warning(f"⚠️ Heartbeat non-200: {hb_resp.status}")
-                    # except Exception as hb_e:
-                    #     logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
-                    #     # Non blocchiamo l'estrazione se il heartbeat fallisce
-                    
-                    # Step 6: Build final URL
-                    channel_key = params['channel_key']
-                    auth_token = params['auth_token']
-                    
-                    # ✅ DINAMICO: usa templates completi
+
+                    # Build final URL
                     if server_key == 'top1/cdn':
-                        # Usa stream_cdn_template (es: https://top1.giokko.ru/top1/cdn/{CHANNEL}/mono.css)
                         stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
                     else:
-                        # Usa stream_other_template (es: https://{SERVER_KEY}new.giokko.ru/{SERVER_KEY}/{CHANNEL}/mono.css)
                         stream_url = self.stream_other_template.replace('{SERVER_KEY}', server_key).replace('{CHANNEL}', channel_key)
-                    
+
                     logger.info(f"✅ Stream URL costruito: {stream_url}")
-                    
-                    # ✅ Genera X-Client-Token (richiesto dal provider per heartbeat/chiavi)
-                    # Formula: btoa(CHANNEL_KEY|AUTH_COUNTRY|AUTH_TS|UA|fingerprint)
-                    # fingerprint = UA|screen|timezone|lang
+
+                    # Genera X-Client-Token
                     auth_ts = params.get('auth_ts', '')
                     auth_country = params.get('auth_country', 'IT')
-                    screen_res = "1920x1080"  # Simula risoluzione comune
+                    screen_res = "1920x1080"
                     timezone = "Europe/Rome"
                     lang = "it-IT"
                     fingerprint = f"{user_agent}|{screen_res}|{timezone}|{lang}"
                     sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
                     client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
                     logger.info(f"🔐 X-Client-Token generato per channel {channel_key}")
-                    
+
                     stream_headers = {
                         'User-Agent': user_agent,
                         'Referer': iframe_url,
                         'Origin': iframe_origin,
                         'Authorization': f'Bearer {auth_token}',
                         'X-Channel-Key': channel_key,
-                        #'Heartbeat-Url': self.heartbeat_url,  # ✅ Passato al proxy per le richieste chiave
-                        'X-Client-Token': client_token,  # ✅ Token richiesto per heartbeat/chiavi
-                        'X-User-Agent': user_agent,  # ✅ Richiesto per auth key URLs
+                        'X-Client-Token': client_token,
+                        'X-User-Agent': user_agent,
                     }
 
                     # ✅ Aggiungi cookies dalla sessione corrente
@@ -998,9 +960,6 @@ class DLHDExtractor:
 
         logger.info(f"✅ Server key: {server_key}")
 
-        # 4. Heartbeat
-        heartbeat_url = self.heartbeat_url
-
         # Genera X-Client-Token
         auth_country = params.get('auth_country', 'DE')
         auth_ts = params.get('auth_ts', str(int(time.time())))
@@ -1011,25 +970,7 @@ class DLHDExtractor:
         sign_data = f"{channel_key}|{auth_country}|{auth_ts}|{user_agent}|{fingerprint}"
         client_token = base64.b64encode(sign_data.encode('utf-8')).decode('utf-8')
 
-        heartbeat_headers = {
-            'User-Agent': user_agent,
-            'Authorization': f'Bearer {auth_token}',
-            'X-Channel-Key': channel_key,
-            'X-Client-Token': client_token,
-            'Referer': iframe_url,
-            'Origin': iframe_origin,
-        }
-
-        # try:
-        #     session = await self._get_session()
-        #     logger.info(f"💓 Invio heartbeat (diretto) a: {heartbeat_url}")
-        #     async with session.get(heartbeat_url, headers=heartbeat_headers, ssl=False, timeout=ClientTimeout(total=10)) as hb_resp:
-        #         hb_text = await hb_resp.text()
-        #         logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
-        # except Exception as hb_e:
-        #     logger.warning(f"⚠️ Heartbeat fallito: {hb_e}")
-
-        # 5. Build Stream URL
+        # Build Stream URL
         if server_key == 'top1/cdn':
             stream_url = self.stream_cdn_template.replace('{CHANNEL}', channel_key)
         else:
@@ -1037,16 +978,15 @@ class DLHDExtractor:
 
         logger.info(f"✅ Stream URL costruito: {stream_url}")
 
-        # 6. Build headers con supporto per secret_key (per calcolo nonce lato proxy)
+        # Build headers con supporto per secret_key (per calcolo nonce lato proxy)
         stream_headers = {
             'User-Agent': user_agent,
             'Referer': iframe_url,
             'Origin': iframe_origin,
             'Authorization': f'Bearer {auth_token}',
             'X-Channel-Key': channel_key,
-            #'Heartbeat-Url': self.heartbeat_url,
             'X-Client-Token': client_token,
-            'X-User-Agent': user_agent,  # ✅ Richiesto per auth key URLs
+            'X-User-Agent': user_agent,
         }
 
         # Se abbiamo la secret_key, la includiamo negli headers per il proxy

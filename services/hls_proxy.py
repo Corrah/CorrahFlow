@@ -959,13 +959,9 @@ class HLSProxy:
             
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
-                # ✅ DLHD Heartbeat: Necessario per stabilire la sessione prima di ricevere le chiavi
-                # Usa Heartbeat-Url header per rilevare stream DLHD (completamente dinamico)
-                heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
-                client_token = headers.pop('X-Client-Token', None)  # ✅ Token per heartbeat
-                secret_key = headers.pop('X-Secret-Key', None)  # ✅ Secret key per calcolo nonce
+                secret_key = headers.pop('X-Secret-Key', None)
 
-                # ✅ NUOVO: Calcola X-Key-Timestamp e X-Key-Nonce se abbiamo la secret_key
+                # Calcola X-Key-Timestamp e X-Key-Nonce se abbiamo la secret_key
                 if secret_key and '/key/' in key_url:
                     nonce_result = self._compute_key_headers(key_url, secret_key)
                     if nonce_result:
@@ -976,35 +972,13 @@ class HLSProxy:
                     else:
                         logger.warning(f"⚠️ Could not compute nonce headers for {key_url}")
 
-                # ✅ NUOVO: Caso 'auth' - URL che contengono 'auth' richiedono headers speciali
+                # Caso 'auth' - URL che contengono 'auth' richiedono headers speciali
                 if 'auth' in key_url.lower():
                     logger.info(f"🔐 Detected 'auth' key URL, ensuring special headers are present")
-                    # Per URL auth, il provider richiede: Authorization, X-Channel-Key, X-User-Agent
-                    # Questi headers dovrebbero già essere stati passati tramite h_ params dal manifest rewriter
-                    # Assicuriamoci solo che X-User-Agent sia presente (usando User-Agent come fallback)
                     if 'X-User-Agent' not in headers:
                         headers['X-User-Agent'] = headers.get('User-Agent', headers.get('user-agent', 'Mozilla/5.0'))
                     logger.info(f"🔐 Auth key headers: Authorization={'***' if headers.get('Authorization') else 'missing'}, X-Channel-Key={headers.get('X-Channel-Key', 'missing')}, X-User-Agent={headers.get('X-User-Agent', 'missing')}")
 
-                if heartbeat_url:
-                    try:
-                        
-                        hb_headers = {
-                            'Authorization': headers.get('Authorization', ''),
-                            'X-Channel-Key': headers.get('X-Channel-Key', ''),
-                            'User-Agent': headers.get('User-Agent', 'Mozilla/5.0'),
-                            'Referer': headers.get('Referer', ''),
-                            'Origin': headers.get('Origin', ''),
-                            'X-Client-Token': client_token or '',  # ✅ Token richiesto dal provider
-                        }
-                        
-                        logger.info(f"💓 Pre-key heartbeat a: {heartbeat_url}")
-                        async with session.get(heartbeat_url, headers=hb_headers, ssl=False, **connector_kwargs) as hb_resp:
-                            hb_text = await hb_resp.text()
-                            logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
-                    except Exception as hb_e:
-                        logger.warning(f"⚠️ Pre-key heartbeat fallito: {hb_e}")
-                
                 async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
                     if resp.status == 200 or resp.status == 206:
                         key_data = await resp.read()
