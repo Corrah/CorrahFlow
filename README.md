@@ -319,6 +319,56 @@ Il server include un sistema di registrazione (DVR) completo.
 
 ---
 
+## 📚 Reference API Completa
+
+Elenco completo di tutti gli endpoint disponibili nel server.
+
+### 🏠 System & Public
+| Metodo | Endpoint | Descrizione |
+|:---|:---|:---|
+| `GET` | `/` | Pagina principale con stato del server. |
+| `GET` | `/info` | Pagina informativa dettagliata. |
+| `GET` | `/builder` | Interfaccia Web Playlist Builder. |
+| `GET` | `/api/info` | API statuto del server (JSON). |
+| `GET` | `/proxy/ip` | Restituisce l'IP pubblico del server (utile per debug VPN). |
+
+### 📺 Proxy & Streaming
+| Metodo | Endpoint | Descrizione |
+|:---|:---|:---|
+| `GET` | `/proxy/manifest.m3u8` | **Entrypoint Principale**. Auto-detect HLS/DASH. |
+| `GET` | `/proxy/hls/manifest.m3u8` | Alias specifico per HLS. |
+| `GET` | `/proxy/mpd/manifest.m3u8` | Forza input DASH (MPD) con conversione HLS. |
+| `GET` | `/proxy/stream` | Proxy generico per file statici (MP4, MKV) o progressivi. |
+| `GET` | `/playlist` | Generatore playlist M3U dinamiche. |
+
+### 🔍 Extractors
+| Metodo | Endpoint | Descrizione |
+|:---|:---|:---|
+| `GET` | `/extractor/video` | Estrae link diretti da siti supportati (Vavoo, DLHD, ecc.). Restituisce JSON o redirect. |
+
+### 🔐 Keys & DRM
+| Metodo | Endpoint | Descrizione |
+|:---|:---|:---|
+| `GET` | `/license` | Proxy per licenze DRM (ClearKey/Widevine). |
+| `POST` | `/license` | Proxy per licenze DRM (supporto POST payload). |
+| `GET` | `/key` | Proxy per chiavi di decrittazione AES-128 standard. |
+
+### 📼 DVR (Digital Video Recorder)
+| Metodo | Endpoint | Descrizione |
+|:---|:---|:---|
+| `GET` | `/recordings` | **Interfaccia Web** gestione registrazioni. |
+| `GET` | `/record` | Avvia registrazione e ridirige allo stream (Smart Mode). |
+| `GET` | `/api/recordings` | Lista tutte le registrazioni (JSON). |
+| `GET` | `/api/recordings/active` | Lista solo registrazioni in corso. |
+| `GET` | `/api/recordings/{id}` | Dettagli di una singola registrazione. |
+| `POST` | `/api/recordings/start` | Avvia registrazione in background (JSON payload). |
+| `POST` | `/api/recordings/{id}/stop` | Ferma una registrazione attiva. |
+| `GET` | `/api/recordings/{id}/stream` | Guarda una registrazione (anche mentre registra). |
+| `GET` | `/api/recordings/{id}/download` | Scarica il file video registrato. |
+| `DELETE` | `/api/recordings/{id}` | Cancella una registrazione. |
+
+---
+
 ## 🧰 Utilizzo del Proxy
 
 Sostituisci `<server-ip>` con l'IP del tuo server.
