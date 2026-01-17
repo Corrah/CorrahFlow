@@ -341,7 +341,18 @@ class HLSProxy:
             # Take only ESSENTIAL headers from original client request
             for h in ['User-Agent', 'Referer', 'Origin', 'Cookie', 'Authorization']:
                 if h in request.headers:
-                    combined_headers[h] = request.headers[h]
+                    val = request.headers[h]
+                    # ✅ FIX: Prevent Referer Leakage. Only pass Referer/Origin if it seems relevant
+                    # to the current domain, OR if it's a standard internal use.
+                    if h.lower() in ['referer', 'origin']:
+                        target_domain = urllib.parse.urlparse(target_url).netloc
+                        ref_domain = urllib.parse.urlparse(val).netloc
+                        # If the referer domain is fundamentally different (e.g. leaking from a previous Sky stream), strip it.
+                        if ref_domain and target_domain and ref_domain != target_domain:
+                            if "torrentio" in target_url.lower() or "resolve" in target_url.lower():
+                                logger.debug(f"🛡️ Stripping unrelated Referer leakage: {val}")
+                                continue
+                    combined_headers[h] = val
             
             # h_ params ALWAYS have priority and override everything else
             for param_name, param_value in request.query.items():
