@@ -63,13 +63,16 @@ class GenericHLSExtractor:
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
         headers = self.base_headers.copy()
         
-        # ✅ FIX: Non sovrascrivere Referer/Origin se già presenti in request_headers (es. passati via h_ params)
-        # GenericHLSExtractor viene usato come fallback per i segmenti, ma se abbiamo già headers specifici
-        # (come quelli di DLHD), dobbiamo preservarli e non resettarli al dominio del segmento.
-        if not any(k.lower() == 'referer' for k in self.request_headers):
-            headers["referer"] = origin
-        if not any(k.lower() == 'origin' for k in self.request_headers):
-            headers["origin"] = origin
+        # ✅ FIX: Avoid circular referer/origin (referer == domain) which can be blocked.
+        # Only add referer/origin if they are not already present in request_headers.
+        if "/resolve/" not in url.lower() and "torrentio" not in url.lower():
+            if not any(k.lower() == 'referer' for k in self.request_headers):
+                headers["referer"] = origin
+            if not any(k.lower() == 'origin' for k in self.request_headers):
+                headers["origin"] = origin
+        else:
+            # For Torrentio/Redirectors, a clean request is often better
+            logger.debug(f"ℹ️ Redirector detected ({urlparse(url).netloc}), using clean headers.")
 
         # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
         # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
@@ -92,6 +95,38 @@ class GenericHLSExtractor:
             # Explicitly block forwarding of IP-related headers
             if h_lower in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
                 continue
+
+        # --- MANUAL REDIRECT RESOLUTION FOR REDIRECTORS (e.g. Torrentio) ---
+        # Resolve the final URL now to avoid passing problematic headers (like Range)
+        # to the resolution script, which often causes 500/520 errors.
+        if "/resolve/" in url.lower() or "torrentio" in url.lower():
+            try:
+                session = await self._get_session()
+                # Use clean browser headers for resolution, WITHOUT client-specific headers (Range, etc.)
+                resolution_headers = {
+                    "User-Agent": headers.get("user-agent", self.base_headers["user-agent"]),
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5"
+                }
+                
+                logger.info(f"🔗 Resolving redirect for suspected redirector: {url}")
+                async with session.get(url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=10)) as resp:
+                    if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
+                        redirected_url = resp.headers['Location']
+                        # Ensure absolute URL
+                        if not redirected_url.startswith('http'):
+                            redirected_url = urllib.parse.urljoin(url, redirected_url)
+                            
+                        logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
+                        return {
+                            "destination_url": redirected_url,
+                            "request_headers": headers,
+                            "mediaflow_endpoint": "hls_proxy"
+                        }
+                    elif resp.status >= 400:
+                        logger.warning(f"⚠️ Resolution returned status {resp.status}. Error body potentially present.")
+            except Exception as e:
+                logger.warning(f"⚠️ Error resolving redirect: {e}")
 
         return {
             "destination_url": url, 
