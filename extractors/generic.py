@@ -136,20 +136,20 @@ class GenericHLSExtractor:
                 try:
                     logger.info(f"🔗 Resolving redirect for suspected redirector: {safe_url}")
                     async with resolution_session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
-                    if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
-                        redirected_url = resp.headers['Location']
-                        if not redirected_url.startswith('http'):
-                            redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
-                            
-                        logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
-                        # Use ORIGINAL headers for the final stream, but safe UA/Referer
-                        return {
-                            "destination_url": redirected_url,
-                            "request_headers": headers,
-                            "mediaflow_endpoint": "hls_proxy"
-                        }
-                    else:
-                        logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx). Headers: {dict(resp.headers)}")
+                        if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
+                            redirected_url = resp.headers['Location']
+                            if not redirected_url.startswith('http'):
+                                redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
+                                
+                            logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
+                            # Use ORIGINAL headers for the final stream, but safe UA/Referer
+                            return {
+                                "destination_url": redirected_url,
+                                "request_headers": headers,
+                                "mediaflow_endpoint": "hls_proxy"
+                            }
+                        else:
+                            logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx). Headers: {dict(resp.headers)}")
                 finally:
                     # Clean up temporary session if created
                     if resolution_session is not session:
