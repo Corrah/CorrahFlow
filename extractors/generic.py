@@ -71,8 +71,10 @@ class GenericHLSExtractor:
             if not any(k.lower() == 'origin' for k in self.request_headers):
                 headers["origin"] = origin
         else:
-            # For Torrentio/Redirectors, a clean request is often better
-            logger.debug(f"ℹ️ Redirector detected ({urlparse(url).netloc}), using clean headers.")
+            # For Torrentio/Redirectors, use a standard Stremio referer if none provided
+            if not any(k.lower() == 'referer' for k in self.request_headers):
+                headers["referer"] = "https://strem.io/"
+            logger.debug(f"ℹ️ Redirector detected ({urlparse(url).netloc}), using optimized headers.")
 
         # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
         # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
@@ -81,18 +83,23 @@ class GenericHLSExtractor:
         # Only allow specific headers that are safe or necessary for authentication.
         for h, v in self.request_headers.items():
             h_lower = h.lower()
-            # ✅ FIX DLHD: Ora accetta User-Agent passato via h_ params (contiene Chrome UA completo)
-            # Salta solo se è lo User-Agent del player (es. "Player (Linux; Android 13)")
-            # ma accetta se è un Chrome UA (contiene "Chrome" o "AppleWebKit")
+            # ✅ FIX: Only pass Referer/Origin if they match the destination or were forced via h_ params
+            # BUT for Torrentio, we already set a default above.
             if h_lower == "user-agent":
-                # Se è un vero browser UA (ha Chrome/Safari), usalo sovrascrivendo il default
                 if "chrome" in v.lower() or "applewebkit" in v.lower():
                     headers["user-agent"] = v
                 continue
-                
-            if h_lower in ["authorization", "x-api-key", "x-auth-token", "cookie", "referer", "origin", "x-channel-key"]:
+            
+            # Filter Referer/Origin: Only keep if they don't look like leakage from unrelated streams
+            if h_lower in ["referer", "origin"]:
+                # If it's a Sky Sport link in a Torrentio request, IGNORE IT
+                if "torrentio" in url.lower() and ("pcdn" in v.lower() or "cssott" in v.lower()):
+                    continue
                 headers[h] = v
-            # Explicitly block forwarding of IP-related headers
+                
+            if h_lower in ["authorization", "x-api-key", "x-auth-token", "cookie", "x-channel-key"]:
+                headers[h] = v
+                
             if h_lower in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
                 continue
 
@@ -106,7 +113,8 @@ class GenericHLSExtractor:
                 resolution_headers = {
                     "User-Agent": headers.get("user-agent", self.base_headers["user-agent"]),
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5"
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Referer": "https://strem.io/"
                 }
                 
                 # ✅ FIX: Properly encode URL if it contains spaces or special characters
@@ -121,11 +129,11 @@ class GenericHLSExtractor:
                 async with session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
                     if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
                         redirected_url = resp.headers['Location']
-                        # Ensure absolute URL
                         if not redirected_url.startswith('http'):
                             redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
                             
                         logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
+                        # Use ORIGINAL headers for the final stream, but safe UA/Referer
                         return {
                             "destination_url": redirected_url,
                             "request_headers": headers,
