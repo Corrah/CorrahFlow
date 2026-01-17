@@ -1070,9 +1070,16 @@ class HLSProxy:
             headers = dict(stream_headers)
             
             # Pass through some client headers, but FILTER those that might leak the IP
-            for header in ['range', 'if-none-match', 'if-modified-since']:
-                if header in request.headers:
-                    headers[header] = request.headers[header]
+            # ✅ FIX: Strip Range and cache headers for redirectors/resolvers (like Torrentio)
+            # These endpoints are not meant to handle ranges and can return 500/520 if they receive them.
+            is_redirector = "/resolve/" in stream_url.lower() or "torrentio" in stream_url.lower()
+            
+            if not is_redirector:
+                for header in ['range', 'if-none-match', 'if-modified-since']:
+                    if header in request.headers:
+                        headers[header] = request.headers[header]
+            else:
+                logger.info(f"🛡️ Stripping Range/Cache headers for suspected redirector: {stream_url}")
             
             # Explicitly remove headers that might reveal the original IP
             for h in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
