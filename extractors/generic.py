@@ -127,28 +127,42 @@ class GenericHLSExtractor:
                     safe_url = urllib.parse.urlunparse(parsed._replace(path=clean_path))
                 
                 # ✅ FIX: Use the standard session (which includes the configured proxy)
-                # Torrentio highly likely blocks server/datacenter IPs, so we MUST use the proxy if available.
+                # But if it timeouts/fails, we might try direct as a fallback.
                 logger.info(f"🔗 [Handshake] Resolving redirect for: {safe_url}")
-                logger.info(f"   -> Handshake headers: {resolution_headers}")
                 
-                # Use a slightly more aggressive timeout for the handshake
-                async with session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=30), ssl=False) as resp:
-                    logger.info(f"   -> Handshake Response: {resp.status}")
-                    if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
-                        redirected_url = resp.headers['Location']
-                        if not redirected_url.startswith('http'):
-                            redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
-                            
-                        logger.info(f"✅ Resolved to final URL: {redirected_url[:150]}...")
-                        return {
-                            "destination_url": redirected_url,
-                            "request_headers": headers,
-                            "mediaflow_endpoint": "hls_proxy"
-                        }
-                    else:
-                        logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx).")
-                        # Detailed log for dev
-                        # logger.debug(f"   Headers received: {dict(resp.headers)}")
+                async def perform_handshake(use_session):
+                    async with use_session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=15), ssl=False) as resp:
+                        logger.info(f"   -> Handshake Response: {resp.status}")
+                        if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
+                            return resp.headers['Location']
+                        return None
+
+                redirected_url = None
+                try:
+                    # Attempt 1: Default session (likely Proxied if configured)
+                    redirected_url = await perform_handshake(session)
+                except Exception as e:
+                    logger.warning(f"⚠️ Primary handshake failed ({type(e).__name__}). Trying direct fallback...")
+                
+                # Attempt 2: Direct connection fallback (if primary failed and we have proxies)
+                if not redirected_url and self.proxies:
+                    try:
+                        async with ClientSession(timeout=ClientTimeout(total=15), connector=TCPConnector(ssl=False)) as direct_session:
+                            redirected_url = await perform_handshake(direct_session)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Direct fallback also failed: {e}")
+
+                if redirected_url:
+                    if not redirected_url.startswith('http'):
+                        redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
+                    logger.info(f"✅ Resolved to final URL: {redirected_url[:150]}...")
+                    return {
+                        "destination_url": redirected_url,
+                        "request_headers": headers,
+                        "mediaflow_endpoint": "hls_proxy"
+                    }
+                else:
+                    logger.warning("❌ Handshake failed to produce a redirect location.")
             except asyncio.TimeoutError:
                 logger.warning(f"⚠️ Timeout (30s) resolving redirect for: {url}")
             except Exception as e:
