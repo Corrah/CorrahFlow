@@ -1078,6 +1078,13 @@ class HLSProxy:
                 elif key.lower() == 'cookie':
                     headers['Cookie'] = headers.pop(key)
 
+            # ✅ TORRENTIO FIX: Always ensure Stremio UA and no Referer/Origin for Torrentio
+            if "strem.fun" in stream_url.lower():
+                headers['User-Agent'] = "Stremio/1.6.11"
+                headers.pop('Referer', None)
+                headers.pop('Origin', None)
+                # logger.info(f"🛡️ [Final Phase] Applied Torrentio Fix for: {stream_url[:50]}...")
+
             # ✅ FIX: Remove explicit duplicates if present (e.g. user-agent and User-Agent)
             # This can happen if GenericHLSExtractor adds 'user-agent' and we have 'User-Agent' from h_ params
             # The normalization above should have unified them, but for safety, we clean up.
