@@ -110,52 +110,47 @@ class GenericHLSExtractor:
         if "/resolve/" in url.lower() or "torrentio" in url.lower():
             try:
                 session = await self._get_session()
-                # Use clean browser headers for resolution, WITHOUT client-specific headers (Range, etc.)
+                # Use DEFAULT User-Agent for resolution to avoid 'libmpv' blocks
                 resolution_headers = {
-                    "User-Agent": headers.get("user-agent", self.base_headers["user-agent"]),
+                    "User-Agent": self.base_headers["user-agent"],
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Language": "it,en-US;q=0.9,en;q=0.8",
                     "Referer": "https://strem.io/"
                 }
                 
                 # ✅ FIX: Properly encode URL if it contains spaces or special characters
                 safe_url = url
                 if ' ' in url:
-                    # Parse and re-quote path parts to handle spaces correctly
                     parsed = urllib.parse.urlparse(url)
-                    clean_path = urllib.parse.quote(parsed.path)
+                    # Quoting path but PRESERVING slashes is crucial for correctly hitting the endpoint
+                    clean_path = urllib.parse.quote(parsed.path, safe='/')
                     safe_url = urllib.parse.urlunparse(parsed._replace(path=clean_path))
                 
-                # ✅ FIX: Try to use a session WITHOUT proxy for resolution if possible, 
-                # as Torrentio/Cloudflare often blocks public datacenter proxies.
-                resolution_session = session
-                if self.proxies:
-                    # Create a temporary direct session for resolution
-                    resolution_session = ClientSession(timeout=ClientTimeout(total=20), connector=TCPConnector(ssl=False))
+                # ✅ FIX: Use the standard session (which includes the configured proxy)
+                # Torrentio highly likely blocks server/datacenter IPs, so we MUST use the proxy if available.
+                logger.info(f"🔗 [Handshake] Resolving redirect for: {safe_url}")
+                logger.info(f"   -> Handshake headers: {resolution_headers}")
                 
-                try:
-                    logger.info(f"🔗 Resolving redirect for suspected redirector: {safe_url}")
-                    async with resolution_session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
-                        if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
-                            redirected_url = resp.headers['Location']
-                            if not redirected_url.startswith('http'):
-                                redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
-                                
-                            logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
-                            # Use ORIGINAL headers for the final stream, but safe UA/Referer
-                            return {
-                                "destination_url": redirected_url,
-                                "request_headers": headers,
-                                "mediaflow_endpoint": "hls_proxy"
-                            }
-                        else:
-                            logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx). Headers: {dict(resp.headers)}")
-                finally:
-                    # Clean up temporary session if created
-                    if resolution_session is not session:
-                        await resolution_session.close()
+                # Use a slightly more aggressive timeout for the handshake
+                async with session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=30), ssl=False) as resp:
+                    logger.info(f"   -> Handshake Response: {resp.status}")
+                    if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
+                        redirected_url = resp.headers['Location']
+                        if not redirected_url.startswith('http'):
+                            redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
+                            
+                        logger.info(f"✅ Resolved to final URL: {redirected_url[:150]}...")
+                        return {
+                            "destination_url": redirected_url,
+                            "request_headers": headers,
+                            "mediaflow_endpoint": "hls_proxy"
+                        }
+                    else:
+                        logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx).")
+                        # Detailed log for dev
+                        # logger.debug(f"   Headers received: {dict(resp.headers)}")
             except asyncio.TimeoutError:
-                logger.warning(f"⚠️ Timeout (20s) resolving redirect for: {url}")
+                logger.warning(f"⚠️ Timeout (30s) resolving redirect for: {url}")
             except Exception as e:
                 logger.warning(f"⚠️ Error resolving redirect ({type(e).__name__}): {e}")
 
