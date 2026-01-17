@@ -61,26 +61,42 @@ class GenericHLSExtractor:
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
         headers = self.base_headers.copy()
         
-        # ✅ FIX: Non sovrascrivere Referer/Origin se già presenti in request_headers (es. passati via h_ params)
-        # GenericHLSExtractor viene usato come fallback per i segmenti, ma se abbiamo già headers specifici
-        # (come quelli di DLHD), dobbiamo preservarli e non resettarli al dominio del segmento.
-        if not any(k.lower() == 'referer' for k in self.request_headers):
-            headers["referer"] = origin
-        if not any(k.lower() == 'origin' for k in self.request_headers):
-            headers["origin"] = origin
+        # ✅ SPECIAL FIX FOR TORRENTIO (strem.fun)
+        # Cloudflare 520 errors often occur due to Referer/Origin headers or specific UAs.
+        if "strem.fun" in url.lower():
+            headers["user-agent"] = "Stremio/1.6.11"
+            headers.pop("referer", None)
+            headers.pop("origin", None)
+            logger.info(f"🛡️ Applying Torrentio Fix: using Stremio UA and removing Referer/Origin")
+        else:
+            # ✅ FIX: Don't overwrite Referer/Origin if already present in request_headers (e.g. passed via h_ params)
+            # GenericHLSExtractor is used as a fallback for segments, but if we already have specific headers
+            # (like those of DLHD), we must preserve them and not reset them to the segment's domain.
+            if not any(k.lower() == 'referer' for k in self.request_headers):
+                headers["referer"] = origin
+            if not any(k.lower() == 'origin' for k in self.request_headers):
+                headers["origin"] = origin
 
-        # ✅ FIX: Ripristinata logica conservativa. Non inoltrare tutti gli header del client
-        # per evitare conflitti (es. Host, Cookie, Accept-Encoding) con il server di destinazione.
-        # Gli header necessari (Referer, User-Agent) vengono gestiti tramite i parametri h_.
+        # ✅ FIX: Restored conservative logic. Do not forward all client headers
+        # to avoid conflicts (e.g. Host, Cookie, Accept-Encoding) with the destination server.
+        # Necessary headers (Referer, User-Agent) are managed via the h_ parameters.
         # ✅ FIX: Prevent IP Leakage. Explicitly filter out X-Forwarded-For and similar headers.
         # Only allow specific headers that are safe or necessary for authentication.
         for h, v in self.request_headers.items():
             h_lower = h.lower()
-            # ✅ FIX DLHD: Ora accetta User-Agent passato via h_ params (contiene Chrome UA completo)
-            # Salta solo se è lo User-Agent del player (es. "Player (Linux; Android 13)")
-            # ma accetta se è un Chrome UA (contiene "Chrome" o "AppleWebKit")
+            
+            # Skip Referer/Origin for Torrentio even if passed in h_ params
+            if "strem.fun" in url.lower() and h_lower in ["referer", "origin"]:
+                continue
+
+            # ✅ FIX DLHD: Now accepts User-Agent passed via h_ params (contains full Chrome UA)
+            # Skip only if it's the player's User-Agent (e.g. "Player (Linux; Android 13)")
+            # but accept if it's a Chrome UA (contains "Chrome" or "AppleWebKit")
             if h_lower == "user-agent":
-                # Se è un vero browser UA (ha Chrome/Safari), usalo sovrascrivendo il default
+                # If it's a real browser UA (has Chrome/Safari), use it overwriting the default
+                # EXCEPT for Torrentio which we want to keep as Stremio
+                if "strem.fun" in url.lower():
+                    continue
                 if "chrome" in v.lower() or "applewebkit" in v.lower():
                     headers["user-agent"] = v
                 continue
