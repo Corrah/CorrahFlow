@@ -15,21 +15,21 @@ except ImportError:
 class ManifestRewriter:
     @staticmethod
     def rewrite_mpd_manifest(manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, clearkey_param: str = None, api_password: str = None) -> str:
-        """Riscrive i manifest MPD (DASH) per passare attraverso il proxy."""
+        """Rewrites MPD (DASH) manifests to pass through the proxy."""
         try:
-            # Aggiungiamo il namespace di default se non presente, per ET
+            # Add default namespace if not present, for ET
             if 'xmlns' not in manifest_content:
                 manifest_content = manifest_content.replace('<MPD', '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"', 1)
 
             root = ET.fromstring(manifest_content)
             ns = {'mpd': 'urn:mpeg:dash:schema:mpd:2011', 'cenc': 'urn:mpeg:cenc:2013', 'dashif': 'http://dashif.org/guidelines/clearKey'}
             
-            # Registra i namespace per evitare prefissi ns0
+            # Register namespaces to avoid ns0 prefixes
             ET.register_namespace('', ns['mpd'])
             ET.register_namespace('cenc', ns['cenc'])
             ET.register_namespace('dashif', ns['dashif'])
 
-            # Includiamo tutti gli header rilevanti passati dall'estrattore
+            # Include all relevant headers passed from the extractor
             header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
             
             if api_password:
@@ -44,26 +44,26 @@ class ManifestRewriter:
                 encoded_url = urllib.parse.quote(absolute_url, safe='')
                 return f"{proxy_base}/proxy/mpd/manifest.m3u8?d={encoded_url}{header_params}"
 
-            # --- GESTIONE CLEARKEY STATICA ---
+            # --- STATIC CLEARKEY HANDLING ---
             if clearkey_param:
                 try:
                     # Support multiple keys separated by comma
                     # Format: KID1:KEY1,KID2:KEY2
                     key_pairs = clearkey_param.split(',')
                     
-                    # Usa il primo KID come default per cenc:default_KID se disponibile
+                    # Use the first KID as default for cenc:default_KID if available
                     first_kid_hex = None
                     if key_pairs:
                         first_pair = key_pairs[0]
                         if ':' in first_pair:
                             first_kid_hex = first_pair.split(':')[0]
 
-                    # Crea l'elemento ContentProtection per ClearKey
+                    # Create ContentProtection element for ClearKey
                     cp_element = ET.Element('ContentProtection')
                     cp_element.set('schemeIdUri', 'urn:uuid:e2719d58-a985-b3c9-781a-007147f192ec')
                     cp_element.set('value', 'ClearKey')
                     
-                    # Puntiamo al nostro endpoint /license
+                    # Point to our /license endpoint
                     license_url = f"{proxy_base}/license?clearkey={clearkey_param}"
                     if api_password:
                         license_url += f"&api_password={api_password}"
@@ -76,24 +76,24 @@ class ManifestRewriter:
                     laurl_dashif = ET.SubElement(cp_element, '{http://dashif.org/guidelines/clearKey}Laurl')
                     laurl_dashif.text = license_url
                     
-                    # 3. Aggiungi cenc:default_KID
+                    # 3. Add cenc:default_KID
                     if first_kid_hex and len(first_kid_hex) == 32:
                         kid_guid = f"{first_kid_hex[:8]}-{first_kid_hex[8:12]}-{first_kid_hex[12:16]}-{first_kid_hex[16:20]}-{first_kid_hex[20:]}"
                         cp_element.set('{urn:mpeg:cenc:2013}default_KID', kid_guid)
 
-                    # Inietta ContentProtection
+                    # Inject ContentProtection
                     adaptation_sets = root.findall('.//mpd:AdaptationSet', ns)
-                    logger.info(f"🔎 Trovati {len(adaptation_sets)} AdaptationSet nel manifest.")
+                    logger.info(f"🔎 Found {len(adaptation_sets)} AdaptationSet in manifest.")
                     
                     for adaptation_set in adaptation_sets:
-                        # RIMUOVI altri ContentProtection (es. Widevine)
+                        # REMOVE other ContentProtection (e.g. Widevine)
                         for cp in adaptation_set.findall('mpd:ContentProtection', ns):
                             scheme = cp.get('schemeIdUri', '').lower()
                             if 'e2719d58-a985-b3c9-781a-007147f192ec' not in scheme:
                                 adaptation_set.remove(cp)
-                                logger.info(f"🗑️ Rimosso ContentProtection conflittuale: {scheme}")
+                                logger.info(f"🗑️ Removed conflicting ContentProtection: {scheme}")
 
-                        # Verifica se esiste già ClearKey
+                        # Check if ClearKey already exists
                         existing_cp = False
                         for cp in adaptation_set.findall('mpd:ContentProtection', ns):
                             if cp.get('schemeIdUri') == 'urn:uuid:e2719d58-a985-b3c9-781a-007147f192ec':
@@ -102,12 +102,12 @@ class ManifestRewriter:
                         
                         if not existing_cp:
                             adaptation_set.insert(0, cp_element)
-                            logger.info(f"💉 Iniettato ContentProtection ClearKey statico in AdaptationSet")
+                            logger.info(f"💉 Injected static ClearKey ContentProtection in AdaptationSet")
 
                 except Exception as e:
-                    logger.error(f"❌ Errore nel parsing del parametro clearkey: {e}")
+                    logger.error(f"❌ Error parsing clearkey parameter: {e}")
 
-            # --- GESTIONE PROXY LICENZE ESISTENTI ---
+            # --- EXISTING LICENSE PROXY HANDLING ---
             for cp in root.findall('.//mpd:ContentProtection', ns):
                 for child in cp:
                     if 'Laurl' in child.tag and child.text:
@@ -117,7 +117,7 @@ class ManifestRewriter:
                         child.text = proxy_license_url
                         logger.info(f"🔄 Redirected License URL: {original_license_url} -> {proxy_license_url}")
 
-            # Riscrive gli attributi URL
+            # Rewrite URL attributes
             for template_tag in root.findall('.//mpd:SegmentTemplate', ns):
                 for attr in ['media', 'initialization']:
                     if template_tag.get(attr):
@@ -134,16 +134,16 @@ class ManifestRewriter:
             return ET.tostring(root, encoding='unicode', method='xml')
 
         except Exception as e:
-            logger.error(f"❌ Errore durante la riscrittura del manifest MPD: {e}")
+            logger.error(f"❌ Error during MPD manifest rewrite: {e}")
             return manifest_content
 
     @staticmethod
     async def rewrite_manifest_urls(manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '', api_password: str = None, get_extractor_func=None, no_bypass: bool = False) -> str:
-        """✅ AGGIORNATA: Riscrive gli URL nei manifest HLS per passare attraverso il proxy (incluse chiavi AES)"""
+        """✅ UPDATED: Rewrites URLs in HLS manifests to pass through the proxy (including AES keys)"""
         lines = manifest_content.split('\n')
         rewritten_lines = []
 
-        # Determina se è VixSrc o DLHD
+        # Determine if it's VixSrc or DLHD
         is_vixsrc_stream = False
         is_dlhd_stream = False
         logger.info(f"Manifest rewriter called with base_url: {base_url}")
@@ -155,15 +155,15 @@ class ManifestRewriter:
                 
                 if hasattr(extractor, 'is_vixsrc') and extractor.is_vixsrc:
                     is_vixsrc_stream = True
-                    logger.info("Rilevato stream VixSrc.")
+                    logger.info("VixSrc stream detected.")
                 elif DLHDExtractor and isinstance(extractor, DLHDExtractor):
                     is_dlhd_stream = True
-                    logger.info(f"✅ Rilevato stream DLHD. Sarà proxato completamente.")
+                    logger.info(f"✅ DLHD stream detected. It will be fully proxied.")
         except Exception as e:
             logger.error(f"Error in extractor detection: {e}")
             pass
 
-        # Logica speciale SOLO per VixSrc (filtro qualità)
+        # Special logic ONLY for VixSrc (quality filter)
         if is_vixsrc_stream:
             streams = []
             for i, line in enumerate(lines):
@@ -175,7 +175,7 @@ class ManifestRewriter:
             
             if streams:
                 highest_quality_stream = max(streams, key=lambda x: x['bandwidth'])
-                logger.info(f"VixSrc: Selezionata bandwidth {highest_quality_stream['bandwidth']}.")
+                logger.info(f"VixSrc: Selected bandwidth {highest_quality_stream['bandwidth']}.")
                 
                 rewritten_lines.append('#EXTM3U')
                 for line in lines:
@@ -187,12 +187,12 @@ class ManifestRewriter:
                 rewritten_lines.append(highest_quality_stream['url'])
                 return '\n'.join(rewritten_lines)
 
-        # --- Logica Standard (incluso DLHD) ---
-        # ✅ FIX DLHD: Il CDN dei segmenti (ai.playerfuncc.fun) è S3-style e rifiuta headers
-        # come Authorization e X-Channel-Key con "InvalidArgument". Per DLHD, passiamo solo
-        # gli headers necessari (Referer, User-Agent, Origin) ai segmenti.
+        # --- Standard Logic (including DLHD) ---
+        # ✅ FIX DLHD: The segment CDN (ai.playerfuncc.fun) is S3-style and rejects headers
+        # like Authorization and X-Channel-Key with "InvalidArgument". For DLHD, we only pass
+        # the necessary headers (Referer, User-Agent, Origin) to the segments.
         if is_dlhd_stream:
-            # Per DLHD, filtra solo gli headers che il CDN accetta
+            # For DLHD, filter only headers that the CDN accepts
             segment_headers = {k: v for k, v in stream_headers.items() 
                              if k.lower() in ['referer', 'user-agent', 'origin']}
             header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" 
@@ -206,14 +206,14 @@ class ManifestRewriter:
         if no_bypass:
             header_params += "&no_bypass=1"
 
-        # Estrai query params dal base_url per ereditarli se necessario
+        # Extract query params from base_url to inherit them if needed
         base_parsed = urllib.parse.urlparse(base_url)
         base_query = base_parsed.query
 
         for line in lines:
             line = line.strip()
             
-            # 1. GESTIONE CHIAVI AES-128
+            # 1. AES-128 KEY HANDLING
             if line.startswith('#EXT-X-KEY:') and 'URI=' in line:
                 uri_start = line.find('URI="') + 5
                 uri_end = line.find('"', uri_start)
@@ -228,7 +228,7 @@ class ManifestRewriter:
                     # Proxy KEY URL
                     proxy_key_url = f"{proxy_base}/key?key_url={encoded_key_url}&original_channel_url={encoded_original_channel_url}"
                     
-                    # Aggiungi header
+                    # Add headers
                     key_header_params = "".join(
                         [f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" 
                          for key, value in stream_headers.items()]
@@ -244,7 +244,7 @@ class ManifestRewriter:
                 else:
                     rewritten_lines.append(line)
             
-            # 2. GESTIONE MEDIA (Sottotitoli, Audio secondario)
+            # 2. MEDIA HANDLING (Subtitles, Secondary Audio)
             elif line.startswith('#EXT-X-MEDIA:') and 'URI=' in line:
                 uri_start = line.find('URI="') + 5
                 uri_end = line.find('"', uri_start)
@@ -254,7 +254,7 @@ class ManifestRewriter:
                     absolute_media_url = urljoin(base_url, original_media_url)
                     encoded_media_url = urllib.parse.quote(absolute_media_url, safe='')
                     
-                    # Usa endpoint manifest
+                    # Use manifest endpoint
                     proxy_media_url = f"{proxy_base}/proxy/hls/manifest.m3u8?d={encoded_media_url}{header_params}"
                     new_line = line[:uri_start] + proxy_media_url + line[uri_end:]
                     rewritten_lines.append(new_line)
@@ -262,7 +262,7 @@ class ManifestRewriter:
                 else:
                     rewritten_lines.append(line)
 
-            # 3. GESTIONE MAP (Init Segment per fMP4)
+            # 3. MAP HANDLING (Init Segment for fMP4)
             elif line.startswith('#EXT-X-MAP:') and 'URI=' in line:
                 uri_start = line.find('URI="') + 5
                 uri_end = line.find('"', uri_start)
@@ -272,7 +272,7 @@ class ManifestRewriter:
                     absolute_map_url = urljoin(base_url, original_map_url)
                     encoded_map_url = urllib.parse.quote(absolute_map_url, safe='')
                     
-                    # Usa endpoint segment.mp4
+                    # Use segment.mp4 endpoint
                     proxy_map_url = f"{proxy_base}/proxy/hls/segment.mp4?d={encoded_map_url}{header_params}"
                     
                     new_line = line[:uri_start] + proxy_map_url + line[uri_end:]
@@ -281,33 +281,33 @@ class ManifestRewriter:
                 else:
                     rewritten_lines.append(line)
 
-            # 4. GESTIONE SEGMENTI E SUB-MANIFEST
+            # 4. SEGMENTS AND SUB-MANIFEST HANDLING
             elif line and not line.startswith('#'):
                 absolute_url = urljoin(base_url, line) if not line.startswith('http') else line
 
-                # Eredita query params (es. token)
+                # Inherit query params (e.g. token)
                 if base_query and '?' not in absolute_url:
                     absolute_url += f"?{base_query}"
 
-                # ✅ BYPASS: Non proxare segmenti di domini con token a scadenza rapida
-                # Freeshot (planetary.lovecdn.ru) ha token che scadono in ~20-30 secondi
-                # Se proxiamo, il token scade prima che il player richieda i segmenti
+                # ✅ BYPASS: Do not proxy segments from domains with fast-expiring tokens
+                # Freeshot (planetary.lovecdn.ru) has tokens that expire in ~20-30 seconds
+                # If we proxy, the token expires before the player requests the segments
                 no_proxy_domains = ['planetary.lovecdn.ru', 'lovecdn.ru']
                 should_bypass = not no_bypass and any(domain in absolute_url for domain in no_proxy_domains)
                 
                 if should_bypass:
-                    # Serve l'URL diretto senza passare dal proxy
+                    # Serve direct URL without passing through proxy
                     rewritten_lines.append(absolute_url)
                 else:
                     encoded_url = urllib.parse.quote(absolute_url, safe='')
 
-                    # Se è .m3u8 usa /proxy/manifest.m3u8, altrimenti determina estensione
+                    # If it's .m3u8 use /proxy/manifest.m3u8, otherwise determine extension
                     if '.m3u8' in absolute_url:
                          proxy_url = f"{proxy_base}/proxy/manifest.m3u8?url={encoded_url}{header_params}"
                     else:
-                         # ✅ FIX: Determina estensione corretta per il segmento
-                         # Se l'URL originale ha estensione mp4/m4s, usa .mp4, altrimenti default a .ts
-                         # Questo aiuta i player a distinguere tra TS e fMP4
+                         # ✅ FIX: Determine correct extension for the segment
+                         # If the original URL has an mp4/m4s extension, use .mp4, otherwise default to .ts
+                         # This helps players distinguish between TS and fMP4
                          path = urllib.parse.urlparse(absolute_url).path
                          ext = '.ts'
                          if path.endswith('.m4s') or path.endswith('.mp4') or path.endswith('.m4v'):
@@ -318,7 +318,7 @@ class ManifestRewriter:
                     rewritten_lines.append(proxy_url)
 
             else:
-                # Tutti gli altri tag (es. #EXTINF, #EXT-X-ENDLIST)
+                # All other tags (e.g. #EXTINF, #EXT-X-ENDLIST)
                 rewritten_lines.append(line)
 
         return '\n'.join(rewritten_lines)

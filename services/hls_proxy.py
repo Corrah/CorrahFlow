@@ -26,103 +26,103 @@ if MPD_MODE == "legacy":
         from utils.mpd_converter import MPDToHLSConverter
         from utils.drm_decrypter import decrypt_segment
         logger = logging.getLogger(__name__)
-        logger.info("✅ Moduli legacy MPD caricati (mpd_converter, drm_decrypter)")
+        logger.info("✅ Legacy MPD modules loaded (mpd_converter, drm_decrypter)")
     except ImportError as e:
         logger = logging.getLogger(__name__)
-        logger.warning(f"⚠️ MPD_MODE=legacy ma moduli non trovati: {e}")
+        logger.warning(f"⚠️ MPD_MODE=legacy but modules not found: {e}")
 
-# --- Moduli Esterni ---
+# --- External Modules ---
 VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
 MixdropExtractor, VoeExtractor, StreamtapeExtractor, OrionExtractor, FreeshotExtractor = None, None, None, None, None
 
 logger = logging.getLogger(__name__)
 
-# Importazione condizionale degli estrattori
+# Conditional import of extractors
 try:
     from extractors.freeshot import FreeshotExtractor
-    logger.info("✅ Modulo FreeshotExtractor caricato.")
+    logger.info("✅ FreeshotExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo FreeshotExtractor non trovato.")
+    logger.warning("⚠️ FreeshotExtractor module not found.")
 
 try:
     from extractors.vavoo import VavooExtractor
-    logger.info("✅ Modulo VavooExtractor caricato.")
+    logger.info("✅ VavooExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo VavooExtractor non trovato. Funzionalità Vavoo disabilitata.")
+    logger.warning("⚠️ VavooExtractor module not found. Vavoo functionality disabled.")
 
 try:
     from extractors.dlhd import DLHDExtractor
-    logger.info("✅ Modulo DLHDExtractor caricato.")
+    logger.info("✅ DLHDExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo DLHDExtractor non trovato. Funzionalità DLHD disabilitata.")
+    logger.warning("⚠️ DLHDExtractor module not found. DLHD functionality disabled.")
 
 try:
     from routes.playlist_builder import PlaylistBuilder
-    logger.info("✅ Modulo PlaylistBuilder caricato.")
+    logger.info("✅ PlaylistBuilder module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo PlaylistBuilder non trovato. Funzionalità PlaylistBuilder disabilitata.")
+    logger.warning("⚠️ PlaylistBuilder module not found. PlaylistBuilder functionality disabled.")
     
 try:
     from extractors.vixsrc import VixSrcExtractor
-    logger.info("✅ Modulo VixSrcExtractor caricato.")
+    logger.info("✅ VixSrcExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo VixSrcExtractor non trovato. Funzionalità VixSrc disabilitata.")
+    logger.warning("⚠️ VixSrcExtractor module not found. VixSrc functionality disabled.")
 
 try:
     from extractors.sportsonline import SportsonlineExtractor
-    logger.info("✅ Modulo SportsonlineExtractor caricato.")
+    logger.info("✅ SportsonlineExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo SportsonlineExtractor non trovato. Funzionalità Sportsonline disabilitata.")
+    logger.warning("⚠️ SportsonlineExtractor module not found. Sportsonline functionality disabled.")
 
 try:
     from extractors.mixdrop import MixdropExtractor
-    logger.info("✅ Modulo MixdropExtractor caricato.")
+    logger.info("✅ MixdropExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo MixdropExtractor non trovato.")
+    logger.warning("⚠️ MixdropExtractor module not found.")
 
 try:
     from extractors.voe import VoeExtractor
-    logger.info("✅ Modulo VoeExtractor caricato.")
+    logger.info("✅ VoeExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo VoeExtractor non trovato.")
+    logger.warning("⚠️ VoeExtractor module not found.")
 
 try:
     from extractors.streamtape import StreamtapeExtractor
-    logger.info("✅ Modulo StreamtapeExtractor caricato.")
+    logger.info("✅ StreamtapeExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo StreamtapeExtractor non trovato.")
+    logger.warning("⚠️ StreamtapeExtractor module not found.")
 
 try:
     from extractors.orion import OrionExtractor
-    logger.info("✅ Modulo OrionExtractor caricato.")
+    logger.info("✅ OrionExtractor module loaded.")
 except ImportError:
-    logger.warning("⚠️ Modulo OrionExtractor non trovato.")
+    logger.warning("⚠️ OrionExtractor module not found.")
 
 class HLSProxy:
-    """Proxy HLS per gestire stream Vavoo, DLHD, HLS generici e playlist builder con supporto AES-128"""
+    """HLS Proxy to handle Vavoo, DLHD, generic HLS streams and playlist builder with AES-128 support"""
     
     def __init__(self, ffmpeg_manager=None):
         self.extractors = {}
         self.ffmpeg_manager = ffmpeg_manager
         
-        # Inizializza il playlist_builder se il modulo è disponibile
+        # Initialize playlist_builder if the module is available
         if PlaylistBuilder:
             self.playlist_builder = PlaylistBuilder()
-            logger.info("✅ PlaylistBuilder inizializzato")
+            logger.info("✅ PlaylistBuilder initialized")
         else:
             self.playlist_builder = None
         
-        # Cache per segmenti di inizializzazione (URL -> content)
+        # Cache for initialization segments (URL -> content)
         self.init_cache = {}
         
-        # Cache per segmenti decriptati (URL -> (content, timestamp))
+        # Cache for decrypted segments (URL -> (content, timestamp))
         self.segment_cache = {}
         self.segment_cache_ttl = 30  # Seconds
         
         # Prefetch queue for background downloading
         self.prefetch_tasks = set()
         
-        # Sessione condivisa per il proxy (no proxy)
+        # Shared session for proxy (no proxy)
         self.session = None
         
         # Cache for proxy sessions (proxy_url -> session)
@@ -188,9 +188,9 @@ class HLSProxy:
 
 
     async def get_extractor(self, url: str, request_headers: dict, host: str = None):
-        """Ottiene l'estrattore appropriato per l'URL"""
+        """Gets the appropriate extractor for the URL"""
         try:
-            # 1. Selezione Manuale tramite parametro 'host'
+            # 1. Manual Selection via 'host' parameter
             if host:
                 host = host.lower()
                 key = host
@@ -234,7 +234,7 @@ class HLSProxy:
                         self.extractors[key] = FreeshotExtractor(request_headers, proxies=GLOBAL_PROXIES)
                     return self.extractors[key]
 
-            # 2. Auto-detection basata sull'URL
+            # 2. Auto-detection based on URL
             if "vavoo.to" in url:
                 key = "vavoo"
                 proxy = get_proxy_for_url('vavoo.to', TRANSPORT_ROUTES, GLOBAL_PROXIES)
@@ -299,19 +299,19 @@ class HLSProxy:
                     self.extractors[key] = OrionExtractor(request_headers, proxies=proxy_list)
                 return self.extractors[key]
             else:
-                # ✅ MODIFICATO: Fallback al GenericHLSExtractor per qualsiasi altro URL.
-                # Questo permette di gestire estensioni sconosciute o URL senza estensione.
+                # ✅ MODIFIED: Fallback to GenericHLSExtractor for any other URL.
+                # This allows handling unknown extensions or URLs without extensions.
                 key = "hls_generic"
                 if key not in self.extractors:
                     self.extractors[key] = GenericHLSExtractor(request_headers, proxies=GLOBAL_PROXIES)
                 return self.extractors[key]
         except (NameError, TypeError) as e:
-            raise ExtractorError(f"Estrattore non disponibile - modulo mancante: {e}")
+            raise ExtractorError(f"Extractor not available - missing module: {e}")
 
     async def handle_proxy_request(self, request):
-        """Gestisce le richieste proxy principali"""
+        """Handles main proxy requests"""
         if not check_password(request):
-            logger.warning(f"⛔ Accesso negato: Password API non valida o mancante. IP: {request.remote}")
+            logger.warning(f"⛔ Access denied: Invalid or missing API Password. IP: {request.remote}")
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         
@@ -322,7 +322,7 @@ class HLSProxy:
             redirect_stream = request.query.get('redirect_stream', 'true').lower() == 'true'
             
             if not target_url:
-                return web.Response(text="Parametro 'url' o 'd' mancante", status=400)
+                return web.Response(text="Missing 'url' or 'd' parameter", status=400)
             
             try:
                 target_url = urllib.parse.unquote(target_url)
@@ -347,7 +347,7 @@ class HLSProxy:
             print(f"   Extractor: {type(extractor).__name__}")
             
             try:
-                # Passa il flag force_refresh all'estrattore
+                # Pass force_refresh flag to the extractor
                 result = await extractor.extract(target_url, force_refresh=force_refresh)
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
@@ -355,23 +355,23 @@ class HLSProxy:
                 print(f"   Resolved Stream URL: {stream_url}")
                 print(f"   Stream Headers: {stream_headers}")
                 
-                # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
+                # If redirect_stream is False, return JSON with details (MediaFlow style)
                 if not redirect_stream:
-                    # Costruisci l'URL base del proxy
+                    # Build the proxy base URL
                     scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
                     host = request.headers.get('X-Forwarded-Host', request.host)
                     proxy_base = f"{scheme}://{host}"
                     
                     mediaflow_endpoint = result.get("mediaflow_endpoint", "hls_proxy")
                     
-                    # Determina l'endpoint corretto (Logic aggiornata come nell'extractor)
+                    # Determine correct endpoint (updated logic as in extractor)
                     endpoint = "/proxy/hls/manifest.m3u8"
                     if mediaflow_endpoint == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
                          endpoint = "/proxy/stream"
                     elif ".mpd" in stream_url:
                         endpoint = "/proxy/mpd/manifest.m3u8"
                         
-                    # Prepariamo i parametri per il JSON
+                    # Prepare JSON parameters
                     q_params = {}
                     api_password = request.query.get('api_password')
                     if api_password:
@@ -381,21 +381,21 @@ class HLSProxy:
                         "destination_url": stream_url,
                         "request_headers": stream_headers,
                         "mediaflow_endpoint": mediaflow_endpoint,
-                        "mediaflow_proxy_url": f"{proxy_base}{endpoint}", # URL Pulito
+                        "mediaflow_proxy_url": f"{proxy_base}{endpoint}", # Clean URL
                         "query_params": q_params
                     }
                     return web.json_response(response_data)
 
-                # Aggiungi headers personalizzati da query params
+                # Add custom headers from query params
                 h_params_found = []
                 for param_name, param_value in request.query.items():
                     if param_name.startswith('h_'):
                         header_name = param_name[2:]
                         h_params_found.append(header_name)
                         
-                        # ✅ FIX: Rimuovi eventuali header duplicati (case-insensitive) presenti in stream_headers
-                        # Questo assicura che l'header passato via query param (es. h_Referer) abbia la priorità
-                        # e non vada in conflitto con quelli generati dagli estrattori (es. referer minuscolo).
+                        # ✅ FIX: Remove any duplicate headers (case-insensitive) present in stream_headers
+                        # This ensures the header passed via query param (e.g. h_Referer) has priority
+                        # and doesn't conflict with those generated by extractors (e.g. lowercase referer).
                         keys_to_remove = [k for k in stream_headers.keys() if k.lower() == header_name.lower()]
                         for k in keys_to_remove:
                             del stream_headers[k]
@@ -592,38 +592,38 @@ class HLSProxy:
                 
                 return await self._proxy_stream(request, stream_url, stream_headers)
             except ExtractorError as e:
-                logger.warning(f"Estrazione fallita, tento di nuovo forzando l'aggiornamento: {e}")
-                result = await extractor.extract(target_url, force_refresh=True) # Forza sempre il refresh al secondo tentativo
+                logger.warning(f"Extraction failed, retrying by forcing update: {e}")
+                result = await extractor.extract(target_url, force_refresh=True) # Always force refresh on second attempt
                 stream_url = result["destination_url"]
                 stream_headers = result.get("request_headers", {})
                 # Stream URL resolved after refresh
                 return await self._proxy_stream(request, stream_url, stream_headers)
             
         except Exception as e:
-            # ✅ MIGLIORATO: Distingui tra errori temporanei (sito offline) ed errori critici
+            # ✅ IMPROVED: Distinguish between temporary errors (site offline) and critical errors
             error_msg = str(e).lower()
             is_temporary_error = any(x in error_msg for x in ['403', 'forbidden', '502', 'bad gateway', 'timeout', 'connection', 'temporarily unavailable'])
             
-            extractor_name = "sconosciuto"
+            extractor_name = "unknown"
             if DLHDExtractor and isinstance(extractor, DLHDExtractor):
                 extractor_name = "DLHDExtractor"
             elif VavooExtractor and isinstance(extractor, VavooExtractor):
                 extractor_name = "VavooExtractor"
 
-            # Se è un errore temporaneo (sito offline), logga solo un WARNING senza traceback
+            # If it's a temporary error (site offline), log only a WARNING without traceback
             if is_temporary_error:
-                logger.warning(f"⚠️ {extractor_name}: Servizio temporaneamente non disponibile - {str(e)}")
-                return web.Response(text=f"Servizio temporaneamente non disponibile: {str(e)}", status=503)
+                logger.warning(f"⚠️ {extractor_name}: Service temporarily unavailable - {str(e)}")
+                return web.Response(text=f"Service temporarily unavailable: {str(e)}", status=503)
             
-            # Per errori veri (non temporanei), logga come CRITICAL con traceback completo
-            logger.critical(f"❌ Errore critico con {extractor_name}: {e}")
-            logger.exception(f"Errore nella richiesta proxy: {str(e)}")
-            return web.Response(text=f"Errore proxy: {str(e)}", status=500)
+            # For real errors (not temporary), log as CRITICAL with full traceback
+            logger.critical(f"❌ Critical error with {extractor_name}: {e}")
+            logger.exception(f"Error in proxy request: {str(e)}")
+            return web.Response(text=f"Proxy error: {str(e)}", status=500)
 
     async def handle_extractor_request(self, request):
         """
-        Endpoint compatibile con MediaFlow-Proxy per ottenere informazioni sullo stream.
-        Supporta redirect_stream per ridirezionare direttamente al proxy.
+        MediaFlow-Proxy compatible endpoint to get stream information.
+        Supports redirect_stream to redirect directly to the proxy.
         """
         # Log request details for debugging
         logger.info(f"📥 Extractor Request: {request.url}")
@@ -633,10 +633,10 @@ class HLSProxy:
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         try:
-            # Supporta sia 'url' che 'd' come parametro
+            # Supports both 'url' and 'd' as parameters
             url = request.query.get('url') or request.query.get('d')
             if not url:
-                # Se non c'è URL, restituisci una pagina di aiuto JSON con gli host disponibili
+                # If no URL, return a JSON help page with available hosts
                 help_response = {
                     "message": "EasyProxy Extractor API",
                     "usage": {
@@ -660,7 +660,7 @@ class HLSProxy:
                 }
                 return web.json_response(help_response)
 
-            # Decodifica URL se necessario
+            # Decode URL if necessary
             try:
                 url = urllib.parse.unquote(url)
             except:
@@ -668,18 +668,18 @@ class HLSProxy:
 
             # 2. Base64 Decoding (Try)
             try:
-                # Tentativo di decodifica Base64 se non sembra un URL valido o se richiesto
-                # Aggiunge padding se necessario
+                # Attempt Base64 decoding if it doesn't look like a valid URL or if requested
+                # Add padding if necessary
                 padded_url = url + '=' * (-len(url) % 4)
                 decoded_bytes = base64.b64decode(padded_url, validate=True)
                 decoded_str = decoded_bytes.decode('utf-8').strip()
                 
-                # Verifica se il risultato sembra un URL valido
+                # Check if the result looks like a valid URL
                 if decoded_str.startswith('http://') or decoded_str.startswith('https://'):
                     url = decoded_str
-                    logger.info(f"🔓 URL Base64 decodificato: {url}")
+                    logger.info(f"🔓 Base64 URL decoded: {url}")
             except Exception:
-                # Non è Base64 o non è un URL valido, proseguiamo con l'originale
+                # Not Base64 or not a valid URL, continue with the original
                 pass
                 
             host_param = request.query.get('host')
@@ -695,12 +695,12 @@ class HLSProxy:
             
             logger.info(f"✅ Extraction success: {stream_url[:50]}... Endpoint: {mediaflow_endpoint}")
 
-            # Costruisci l'URL del proxy per questo stream
+            # Build the proxy URL for this stream
             scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             host = request.headers.get('X-Forwarded-Host', request.host)
             proxy_base = f"{scheme}://{host}"
             
-            # Determina l'endpoint corretto
+            # Determine the correct endpoint
             endpoint = "/proxy/hls/manifest.m3u8"
             if mediaflow_endpoint == "proxy_stream_endpoint" or ".mp4" in stream_url or ".mkv" in stream_url or ".avi" in stream_url:
                  endpoint = "/proxy/stream"
@@ -710,19 +710,19 @@ class HLSProxy:
             encoded_url = urllib.parse.quote(stream_url, safe='')
             header_params = "".join([f"&h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}" for key, value in stream_headers.items()])
             
-            # Aggiungi api_password se presente
+            # Add api_password if present
             api_password = request.query.get('api_password')
             if api_password:
                 header_params += f"&api_password={api_password}"
 
-            # 1. URL COMPLETO (Solo per il redirect)
+            # 1. FULL URL (Only for redirect)
             full_proxy_url = f"{proxy_base}{endpoint}?d={encoded_url}{header_params}"
 
             if redirect_stream:
                 logger.info(f"↪️ Redirecting to: {full_proxy_url}")
                 return web.HTTPFound(full_proxy_url)
 
-            # 2. URL PULITO (Per il JSON stile MediaFlow)
+            # 2. CLEAN URL (For MediaFlow style JSON)
             q_params = {}
             if api_password:
                 q_params['api_password'] = api_password
@@ -740,7 +740,7 @@ class HLSProxy:
 
         except Exception as e:
             error_message = str(e).lower()
-            # Per errori attesi (video non trovato, servizio non disponibile), non stampare il traceback
+            # For expected errors (video not found, service unavailable), do not print traceback
             is_expected_error = any(x in error_message for x in [
                 'not found', 'unavailable', '403', 'forbidden', 
                 '502', 'bad gateway', 'timeout', 'temporarily unavailable'
@@ -756,19 +756,19 @@ class HLSProxy:
             return web.Response(text=str(e), status=500)
 
     async def handle_license_request(self, request):
-        """✅ NUOVO: Gestisce le richieste di licenza DRM (ClearKey e Proxy)"""
+        """✅ NEW: Handles DRM license requests (ClearKey and Proxy)"""
         try:
-            # 1. Modalità ClearKey Statica
+            # 1. Static ClearKey Mode
             clearkey_param = request.query.get('clearkey')
             if clearkey_param:
-                logger.info(f"🔑 Richiesta licenza ClearKey statica: {clearkey_param}")
+                logger.info(f"🔑 Static ClearKey license request: {clearkey_param}")
                 try:
                     # Support multiple keys separated by comma
                     # Format: KID1:KEY1,KID2:KEY2
                     key_pairs = clearkey_param.split(',')
                     keys_jwk = []
                     
-                    # Helper per convertire hex in base64url
+                    # Helper to convert hex to base64url
                     def hex_to_b64url(hex_str):
                         return base64.urlsafe_b64encode(binascii.unhexlify(hex_str)).decode('utf-8').rstrip('=')
 
@@ -793,28 +793,27 @@ class HLSProxy:
                     logger.info(f"🔑 Serving static ClearKey license with {len(keys_jwk)} keys")
                     return web.json_response(jwk_response)
                 except Exception as e:
-                    logger.error(f"❌ Errore nella generazione della licenza ClearKey statica: {e}")
+                    logger.error(f"❌ Error generating static ClearKey license: {e}")
                     return web.Response(text="Invalid ClearKey format", status=400)
 
-            # 2. Modalità Proxy Licenza
+            # 2. License Proxy Mode
             license_url = request.query.get('url')
             if not license_url:
                 return web.Response(text="Missing url parameter", status=400)
 
             license_url = urllib.parse.unquote(license_url)
             
-            # Ricostruisce gli headers
             headers = {}
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
                     header_name = param_name[2:].replace('_', '-')
                     headers[header_name] = param_value
 
-            # Aggiunge headers specifici della richiesta originale (es. content-type per il body)
+            # Add specific headers from the original request (e.g. content-type for the body)
             if request.headers.get('Content-Type'):
                 headers['Content-Type'] = request.headers.get('Content-Type')
 
-            # Legge il body della richiesta (challenge DRM)
+            # Read request body (DRM challenge)
             body = await request.read()
             
             logger.info(f"🔐 Proxying License Request to: {license_url}")
@@ -840,7 +839,7 @@ class HLSProxy:
                         "Access-Control-Allow-Headers": "*",
                         "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
                     }
-                    # Copia alcuni headers utili dalla risposta originale
+                    # Copy some useful headers from the original response
                     if 'Content-Type' in resp.headers:
                         response_headers['Content-Type'] = resp.headers['Content-Type']
 
@@ -855,11 +854,11 @@ class HLSProxy:
             return web.Response(text=f"License error: {str(e)}", status=500)
 
     async def handle_key_request(self, request):
-        """✅ NUOVO: Gestisce richieste per chiavi AES-128"""
+        """✅ NEW: Handles requests for AES-128 keys"""
         if not check_password(request):
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
-        # 1. Gestione chiave statica (da MPD converter)
+        # 1. Static key handling (from MPD converter)
         static_key = request.query.get('static_key')
         if static_key:
             try:
@@ -870,28 +869,28 @@ class HLSProxy:
                     headers={'Access-Control-Allow-Origin': '*'}
                 )
             except Exception as e:
-                logger.error(f"❌ Errore decodifica chiave statica: {e}")
+                logger.error(f"❌ Error decoding static key: {e}")
                 return web.Response(text="Invalid static key", status=400)
 
-        # 2. Gestione proxy chiave remota
+        # 2. Remote key proxy handling
         key_url = request.query.get('key_url')
         
         if not key_url:
             return web.Response(text="Missing key_url or static_key parameter", status=400)
         
         try:
-            # Decodifica l'URL se necessario
+            # Decode URL if necessary
             try:
                 key_url = urllib.parse.unquote(key_url)
             except:
                 pass
                 
-            # Inizializza gli header esclusivamente da quelli passati dinamicamente
+            # Initialize headers exclusively from those passed dynamically
             headers = {}
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
                     header_name = param_name[2:].replace('_', '-')
-                    # ✅ FIX: Rimuovi header Range per le richieste di chiavi.
+                    # ✅ FIX: Remove Range header for key requests.
                     if header_name.lower() == 'range':
                         continue
                     headers[header_name] = param_value
@@ -899,19 +898,19 @@ class HLSProxy:
             logger.info(f"🔑 Fetching AES key from: {key_url}")
             logger.info(f"   -> with headers: {headers}")
             
-            # ✅ NUOVO: Usa il sistema di routing basato su TRANSPORT_ROUTES
+            # ✅ NEW: Use routing system based on TRANSPORT_ROUTES
             proxy = get_proxy_for_url(key_url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                logger.info(f"Utilizzo del proxy {proxy} per la richiesta della chiave.")
+                logger.info(f"Using proxy {proxy} for key request.")
             
             timeout = ClientTimeout(total=30)
             async with ClientSession(timeout=timeout) as session:
-                # ✅ DLHD Heartbeat: Necessario per stabilire la sessione prima di ricevere le chiavi
-                # Usa Heartbeat-Url header per rilevare stream DLHD (completamente dinamico)
-                heartbeat_url = headers.pop('Heartbeat-Url', None)  # Rimuovilo dagli headers
-                client_token = headers.pop('X-Client-Token', None)  # ✅ Token per heartbeat
+                # ✅ DLHD Heartbeat: Necessary to establish the session before receiving keys
+                # Use Heartbeat-Url header to detect DLHD stream (fully dynamic)
+                heartbeat_url = headers.pop('Heartbeat-Url', None)  # Remove it from headers
+                client_token = headers.pop('X-Client-Token', None)  # ✅ Token for heartbeat
                 if heartbeat_url:
                     try:
                         
@@ -921,15 +920,15 @@ class HLSProxy:
                             'User-Agent': headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'),
                             'Referer': headers.get('Referer', ''),
                             'Origin': headers.get('Origin', ''),
-                            'X-Client-Token': client_token or '',  # ✅ Token richiesto dal provider
+                            'X-Client-Token': client_token or '',  # ✅ Token required by the provider
                         }
                         
-                        logger.info(f"💓 Pre-key heartbeat a: {heartbeat_url}")
+                        logger.info(f"💓 Pre-key heartbeat to: {heartbeat_url}")
                         async with session.get(heartbeat_url, headers=hb_headers, ssl=False, **connector_kwargs) as hb_resp:
                             hb_text = await hb_resp.text()
                             logger.info(f"💓 Heartbeat response: {hb_resp.status} - {hb_text[:100]}")
                     except Exception as hb_e:
-                        logger.warning(f"⚠️ Pre-key heartbeat fallito: {hb_e}")
+                        logger.warning(f"⚠️ Pre-key heartbeat failed: {hb_e}")
                 
                 async with session.get(key_url, headers=headers, **connector_kwargs) as resp:
                     if resp.status == 200 or resp.status == 206:
@@ -947,7 +946,7 @@ class HLSProxy:
                         )
                     else:
                         logger.error(f"❌ Key fetch failed with status: {resp.status}")
-                        # --- LOGICA DI INVALIDAZIONE AUTOMATICA ---
+                        # --- AUTOMATIC CACHE INVALIDATION LOGIC ---
                         try:
                             url_param = request.query.get('original_channel_url')
                             if url_param:
@@ -955,8 +954,8 @@ class HLSProxy:
                                 if hasattr(extractor, 'invalidate_cache_for_url'):
                                     await extractor.invalidate_cache_for_url(url_param)
                         except Exception as cache_e:
-                            logger.error(f"⚠️ Errore durante l'invalidazione automatica della cache: {cache_e}")
-                        # --- FINE LOGICA ---
+                            logger.error(f"⚠️ Error during automatic cache invalidation: {cache_e}")
+                        # --- END LOGIC ---
                         return web.Response(text=f"Key fetch failed: {resp.status}", status=resp.status)
                         
         except Exception as e:
@@ -964,20 +963,20 @@ class HLSProxy:
             return web.Response(text=f"Key error: {str(e)}", status=500)
 
     async def handle_ts_segment(self, request):
-        """Gestisce richieste per segmenti .ts"""
+        """Handles requests for .ts segments"""
         try:
             segment_name = request.match_info.get('segment')
             base_url = request.query.get('base_url')
             
             if not base_url:
-                return web.Response(text="Base URL mancante per segmento", status=400)
+                return web.Response(text="Base URL missing for segment", status=400)
             
             base_url = urllib.parse.unquote(base_url)
             
             if base_url.endswith('/'):
                 segment_url = f"{base_url}{segment_name}"
             else:
-                # ✅ CORREZIONE: Se base_url è un URL completo (es. generato dal converter), usalo direttamente.
+                # ✅ FIX: If base_url is a full URL (e.g. generated by the converter), use it directly.
                 if any(ext in base_url for ext in ['.mp4', '.m4s', '.ts', '.m4i', '.m4a', '.m4v']):
                     segment_url = base_url
                 else:
@@ -985,22 +984,22 @@ class HLSProxy:
             
             logger.info(f"📦 Proxy Segment: {segment_name}")
             
-            # Gestisce la risposta del proxy per il segmento
+            # Handles proxy response for the segment
             return await self._proxy_segment(request, segment_url, {
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
                 "referer": base_url
             }, segment_name)
             
         except Exception as e:
-            logger.error(f"Errore nel proxy segmento .ts: {str(e)}")
-            return web.Response(text=f"Errore segmento: {str(e)}", status=500)
+            logger.error(f"Error in .ts segment proxy: {str(e)}")
+            return web.Response(text=f"Segment error: {str(e)}", status=500)
 
     async def _proxy_segment(self, request, segment_url, stream_headers, segment_name):
-        """✅ NUOVO: Proxy dedicato per segmenti .ts con Content-Disposition"""
+        """✅ NEW: Dedicated proxy for .ts segments with Content-Disposition"""
         try:
             headers = dict(stream_headers)
             
-            # Passa attraverso alcuni headers del client
+            # Pass through some client headers
             for header in ['range', 'if-none-match', 'if-modified-since']:
                 if header in request.headers:
                     headers[header] = request.headers[header]
@@ -1009,7 +1008,7 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                logger.debug(f"📡 [Proxy Segment] Utilizzo del proxy {proxy} per il segmento .ts")
+                logger.debug(f"📡 [Proxy Segment] Using proxy {proxy} for the .ts segment")
 
             timeout = ClientTimeout(total=60, connect=30)
             async with ClientSession(timeout=timeout) as session:
@@ -1021,7 +1020,7 @@ class HLSProxy:
                         if header in resp.headers:
                             response_headers[header] = resp.headers[header]
                     
-                    # Forza il content-type e aggiunge Content-Disposition per .ts
+                    # Force content-type and add Content-Disposition for .ts
                     response_headers['Content-Type'] = 'video/MP2T'
                     response_headers['Content-Disposition'] = f'attachment; filename="{segment_name}"'
                     response_headers['Access-Control-Allow-Origin'] = '*'
@@ -1042,20 +1041,20 @@ class HLSProxy:
                     return response
                     
         except Exception as e:
-            logger.error(f"Errore nel proxy del segmento: {str(e)}")
-            return web.Response(text=f"Errore segmento: {str(e)}", status=500)
+            logger.error(f"Error in segment proxy: {str(e)}")
+            return web.Response(text=f"Segment error: {str(e)}", status=500)
 
     async def _proxy_stream(self, request, stream_url, stream_headers):
-        """Effettua il proxy dello stream con gestione manifest e AES-128"""
+        """Proxies the stream with manifest and AES-128 handling"""
         try:
             headers = dict(stream_headers)
             
-            # Passa attraverso alcuni headers del client, ma FILTRA quelli che potrebbero leakare l'IP
+            # Pass through some client headers, but FILTER those that might leak the IP
             for header in ['range', 'if-none-match', 'if-modified-since']:
                 if header in request.headers:
                     headers[header] = request.headers[header]
             
-            # Rimuovi esplicitamente headers che potrebbero rivelare l'IP originale
+            # Explicitly remove headers that might reveal the original IP
             for h in ["x-forwarded-for", "x-real-ip", "forwarded", "via"]:
                 if h in headers:
                     del headers[h]
@@ -1064,9 +1063,9 @@ class HLSProxy:
             connector_kwargs = {}
             if proxy:
                 connector_kwargs['proxy'] = proxy
-                logger.info(f"📡 [Proxy Stream] Utilizzo del proxy {proxy} per la richiesta verso: {stream_url}")
+                logger.info(f"📡 [Proxy Stream] Using proxy {proxy} for the request to: {stream_url}")
 
-            # ✅ FIX: Normalizza gli header critici (User-Agent, Referer) in Title-Case
+            # ✅ FIX: Normalize critical headers (User-Agent, Referer) to Title-Case
             for key in list(headers.keys()):
                 if key.lower() == 'user-agent':
                     headers['User-Agent'] = headers.pop(key)
@@ -1079,14 +1078,14 @@ class HLSProxy:
                 elif key.lower() == 'cookie':
                     headers['Cookie'] = headers.pop(key)
 
-            # ✅ FIX: Rimuovi duplicati espliciti se presenti (es. user-agent e User-Agent)
-            # Questo può accadere se GenericHLSExtractor aggiunge 'user-agent' e noi abbiamo 'User-Agent' da h_ params
-            # La normalizzazione sopra dovrebbe averli unificati, ma per sicurezza puliamo.
+            # ✅ FIX: Remove explicit duplicates if present (e.g. user-agent and User-Agent)
+            # This can happen if GenericHLSExtractor adds 'user-agent' and we have 'User-Agent' from h_ params
+            # The normalization above should have unified them, but for safety, we clean up.
             
-            # Log headers finali per debug
+            # Log final headers for debug
             # logger.info(f"   Final Stream Headers: {headers}")
 
-            # ✅ NUOVO: Determina se disabilitare SSL per questo dominio
+            # ✅ NEW: Determine whether to disable SSL for this domain
             disable_ssl = get_ssl_setting_for_url(stream_url, TRANSPORT_ROUTES)
 
             timeout = ClientTimeout(total=60, connect=30)
@@ -1096,7 +1095,7 @@ class HLSProxy:
                     
                     print(f"   Upstream Response: {resp.status} [{content_type}]")
 
-                    # ✅ FIX: Se la risposta non è OK, restituisci direttamente l'errore senza processare
+                    # ✅ FIX: If the response is not OK, return the error directly without processing
                     if resp.status not in [200, 206]:
                         error_body = await resp.read()
                         logger.warning(f"⚠️ Upstream returned error {resp.status} for {stream_url}")
@@ -1114,35 +1113,35 @@ class HLSProxy:
                             }
                         )
                     
-                    # Gestione special per manifest HLS
-                    # ✅ Gestisce manifest HLS standard e mascherati da .css (usati da DLHD)
-                    # Per .css, verifica se contiene #EXTM3U (signature HLS) per rilevare manifest mascherati
+                    # Special handling for HLS manifests
+                    # ✅ Handles standard HLS manifests and those masked as .css (used by DLHD)
+                    # For .css, check if it contains #EXTM3U (HLS signature) to detect masked manifests
                     is_hls_manifest = 'mpegurl' in content_type or stream_url.endswith('.m3u8')
                     is_css_file = stream_url.endswith('.css')
                     
                     if is_hls_manifest or is_css_file:
                         try:
-                            # Leggi come bytes prima per evitare crash su decode
+                            # Read as bytes first to avoid decode crashes
                             content_bytes = await resp.read()
                             
                             try:
-                                # Tenta la decodifica testo
+                                # Attempt text decoding
                                 manifest_content = content_bytes.decode('utf-8')
                             except UnicodeDecodeError:
-                                # SE FALLISCE: È binario mascherato (es. segmento .ts in un .css)
+                                # IF IT FAILS: It's masked binary (e.g. .ts segment in a .css)
                                 logger.warning(f"⚠️ Binary detected in {stream_url} (masked as {content_type}). Serving as binary.")
                                 return web.Response(
                                     body=content_bytes,
                                     status=resp.status,
                                     headers={
-                                        'Content-Type': 'video/MP2T', # Forza TS se è binario camuffato
+                                        'Content-Type': 'video/MP2T', # Force TS if it's disguised binary
                                         'Access-Control-Allow-Origin': '*'
                                     }
                                 )
 
-                            # Per .css, verifica che sia effettivamente un manifest HLS
+                            # For .css, verify that it is indeed an HLS manifest
                             if is_css_file and not manifest_content.strip().startswith('#EXTM3U'):
-                                # Non è un manifest HLS, restituisci come CSS normale
+                                # It's not an HLS manifest, return as normal CSS
                                 return web.Response(
                                     text=manifest_content,
                                     content_type=content_type or 'text/css',
@@ -1153,7 +1152,7 @@ class HLSProxy:
                              # Fallback to binary proxy
                              return web.Response(body=await resp.read(), status=resp.status, headers={'Access-Control-Allow-Origin': '*'})
                         
-                        # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+                        # ✅ FIX: Detect the correct scheme and host when behind a reverse proxy
                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
                         host = request.headers.get('X-Forwarded-Host', request.host)
                         proxy_base = f"{scheme}://{host}"
@@ -1175,19 +1174,19 @@ class HLSProxy:
                             }
                         )
                     
-                    # ✅ AGGIORNATO: Gestione per manifest MPD (DASH)
+                    # ✅ UPDATED: Handling for MPD (DASH) manifests
                     elif 'dash+xml' in content_type or stream_url.endswith('.mpd'):
                         manifest_content = await resp.text()
                         
-                        # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+                        # ✅ FIX: Detect the correct scheme and host when behind a reverse proxy
                         scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
                         host = request.headers.get('X-Forwarded-Host', request.host)
                         proxy_base = f"{scheme}://{host}"
                         
-                        # Recupera parametri
+                        # Retrieve parameters
                         clearkey_param = request.query.get('clearkey')
                         
-                        # ✅ FIX: Supporto per key_id e key separati (stile MediaFlowProxy)
+                        # ✅ FIX: Support for separate key_id and key (MediaFlowProxy style)
                         if not clearkey_param:
                             key_id_param = request.query.get('key_id')
                             key_val_param = request.query.get('key')
@@ -1266,7 +1265,7 @@ class HLSProxy:
                                 'Cache-Control': 'no-cache'
                             })
                     
-                    # Streaming normale per altri tipi di contenuto
+                    # Normal streaming for other content types
                     response_headers = {}
                     
                     for header in ['content-type', 'content-length', 'content-range', 
@@ -1274,7 +1273,7 @@ class HLSProxy:
                         if header in resp.headers:
                             response_headers[header] = resp.headers[header]
                     
-                    # ✅ FIX: Forza Content-Type per segmenti .ts se il server non lo invia correttamente
+                    # ✅ FIX: Force Content-Type for .ts segments if the server does not send it correctly
                     if (stream_url.endswith('.ts') or request.path.endswith('.ts')) and 'video/mp2t' not in response_headers.get('content-type', '').lower():
                         response_headers['Content-Type'] = 'video/MP2T'
 
@@ -1296,43 +1295,42 @@ class HLSProxy:
                     return response
                     
         except (ClientPayloadError, ConnectionResetError, OSError) as e:
-            # Errori tipici di disconnessione del client
-            logger.info(f"ℹ️ Client disconnesso dallo stream: {stream_url} ({str(e)})")
+            # Typical client disconnection errors
+            logger.info(f"ℹ️ Client disconnected from stream: {stream_url} ({str(e)})")
             return web.Response(text="Client disconnected", status=499)
             
         except (ServerDisconnectedError, ClientConnectionError, asyncio.TimeoutError) as e:
-            # Errori di connessione upstream
-            logger.warning(f"⚠️ Connessione persa con la sorgente: {stream_url} ({str(e)})")
+            # Upstream connection errors
+            logger.warning(f"⚠️ Connection lost with source: {stream_url} ({str(e)})")
             return web.Response(text=f"Upstream connection lost: {str(e)}", status=502)
 
         except Exception as e:
-            logger.error(f"❌ Errore generico nel proxy dello stream: {str(e)}")
-            return web.Response(text=f"Errore stream: {str(e)}", status=500)
+            logger.error(f"❌ Generic error in stream proxy: {str(e)}")
+            return web.Response(text=f"Stream error: {str(e)}", status=500)
 
     async def handle_playlist_request(self, request):
-        """Gestisce le richieste per il playlist builder"""
+        """Handles requests for the playlist builder"""
         if not self.playlist_builder:
-            return web.Response(text="❌ Playlist Builder non disponibile - modulo mancante", status=503)
+            return web.Response(text="❌ Playlist Builder not available - missing module", status=503)
             
         try:
             url_param = request.query.get('url')
             
             if not url_param:
-                return web.Response(text="Parametro 'url' mancante", status=400)
+                return web.Response(text="Missing 'url' parameter", status=400)
             
             if not url_param.strip():
-                return web.Response(text="Parametro 'url' non può essere vuoto", status=400)
+                return web.Response(text="Parameter 'url' cannot be empty", status=400)
             
             playlist_definitions = [def_.strip() for def_ in url_param.split(';') if def_.strip()]
             if not playlist_definitions:
-                return web.Response(text="Nessuna definizione playlist valida trovata", status=400)
-            
-            # ✅ CORREZIONE: Rileva lo schema e l'host corretti quando dietro un reverse proxy
+                return web.Response(text="No playlist definitions provided", status=400) # Added missing return
+            # ✅ FIX: Detect correct scheme and host when behind a reverse proxy
             scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             host = request.headers.get('X-Forwarded-Host', request.host)
             base_url = f"{scheme}://{host}"
             
-            # ✅ FIX: Passa api_password al builder se presente
+            # ✅ FIX: Pass api_password to the builder if present
             api_password = request.query.get('api_password')
             
             async def generate_response():
@@ -1359,47 +1357,47 @@ class HLSProxy:
             return response
             
         except Exception as e:
-            logger.error(f"Errore generale nel playlist handler: {str(e)}")
-            return web.Response(text=f"Errore: {str(e)}", status=500)
+            logger.error(f"❌ General error in playlist handler: {str(e)}")
+            return web.Response(text=f"Error: {str(e)}", status=500)
 
     def _read_template(self, filename: str) -> str:
-        """Funzione helper per leggere un file di template."""
-        # Nota: assume che i template siano nella directory 'templates' nella root del progetto
-        # Poiché siamo in services/, dobbiamo salire di un livello
+        """Helper function to read a template file."""
+        # Note: assumes templates are in the 'templates' directory in the project root
+        # Since we are in services/, we need to go up one level
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         template_path = os.path.join(base_dir, 'templates', filename)
         with open(template_path, 'r', encoding='utf-8') as f:
             return f.read()
 
     async def handle_root(self, request):
-        """Serve la pagina principale index.html."""
+        """Serves the main index.html page."""
         try:
             html_content = self._read_template('index.html')
             return web.Response(text=html_content, content_type='text/html')
         except Exception as e:
-            logger.error(f"❌ Errore critico: impossibile caricare 'index.html': {e}")
-            return web.Response(text="<h1>Errore 500</h1><p>Pagina non trovata.</p>", status=500, content_type='text/html')
+            logger.error(f"❌ Critical error: unable to load 'index.html': {e}")
+            return web.Response(text="<h1>Error 500</h1><p>Page not found.</p>", status=500, content_type='text/html')
 
     async def handle_builder(self, request):
-        """Gestisce l'interfaccia web del playlist builder."""
+        """Handles the web interface of the playlist builder."""
         try:
             html_content = self._read_template('builder.html')
             return web.Response(text=html_content, content_type='text/html')
         except Exception as e:
-            logger.error(f"❌ Errore critico: impossibile caricare 'builder.html': {e}")
-            return web.Response(text="<h1>Errore 500</h1><p>Impossibile caricare l'interfaccia builder.</p>", status=500, content_type='text/html')
+            logger.error(f"❌ Critical error: unable to load 'builder.html': {e}")
+            return web.Response(text="<h1>Error 500</h1><p>Unable to load builder interface.</p>", status=500, content_type='text/html')
 
     async def handle_info_page(self, request):
-        """Serve la pagina HTML delle informazioni."""
+        """Serves the HTML info page."""
         try:
             html_content = self._read_template('info.html')
             return web.Response(text=html_content, content_type='text/html')
         except Exception as e:
-            logger.error(f"❌ Errore critico: impossibile caricare 'info.html': {e}")
-            return web.Response(text="<h1>Errore 500</h1><p>Impossibile caricare la pagina info.</p>", status=500, content_type='text/html')
+            logger.error(f"❌ Critical error: unable to load 'info.html': {e}")
+            return web.Response(text="<h1>Error 500</h1><p>Unable to load info page.</p>", status=500, content_type='text/html')
 
     async def handle_favicon(self, request):
-        """Serve il file favicon.ico."""
+        """Serves the favicon.ico file."""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         favicon_path = os.path.join(base_dir, 'static', 'favicon.ico')
         if os.path.exists(favicon_path):
@@ -1407,7 +1405,7 @@ class HLSProxy:
         return web.Response(status=404)
 
     async def handle_options(self, request):
-        """Gestisce richieste OPTIONS per CORS"""
+        """Handles OPTIONS requests for CORS"""
         headers = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
@@ -1417,16 +1415,16 @@ class HLSProxy:
         return web.Response(headers=headers)
 
     async def handle_api_info(self, request):
-        """Endpoint API che restituisce le informazioni sul server in formato JSON."""
+        """API endpoint that returns server information in JSON format."""
         info = {
             "proxy": "HLS Proxy Server",
-            "version": "2.5.0",  # Aggiornata per supporto AES-128
-            "status": "✅ Funzionante",
+            "version": "2.5.0",  # Updated for AES-128 support
+            "status": "✅ Working",
             "features": [
                 "✅ Proxy HLS streams",
-                "✅ AES-128 key proxying",  # ✅ NUOVO
+                "✅ AES-128 key proxying",  # ✅ NEW
                 "✅ Playlist building",
-                "✅ Supporto Proxy (SOCKS5, HTTP/S)",
+                "✅ Proxy Support (SOCKS5, HTTP/S)",
                 "✅ Multi-extractor support",
                 "✅ CORS enabled"
             ],
@@ -1442,26 +1440,26 @@ class HLSProxy:
                 "streamtape_extractor": StreamtapeExtractor is not None,
             },
             "proxy_config": {
-                "global_proxies": f"{len(GLOBAL_PROXIES)} proxies caricati",
-                "transport_routes": f"{len(TRANSPORT_ROUTES)} regole di routing configurate",
+                "global_proxies": f"{len(GLOBAL_PROXIES)} proxies loaded",
+                "transport_routes": f"{len(TRANSPORT_ROUTES)} routing rules configured",
                 "routes": [{"url": route['url'], "has_proxy": route['proxy'] is not None} for route in TRANSPORT_ROUTES]
             },
             "endpoints": {
-                "/proxy/hls/manifest.m3u8": "Proxy HLS (compatibilità MFP) - ?d=<URL>",
-                "/proxy/mpd/manifest.m3u8": "Proxy MPD (compatibilità MFP) - ?d=<URL>",
-                "/proxy/manifest.m3u8": "Proxy Legacy - ?url=<URL>",
-                "/key": "Proxy chiavi AES-128 - ?key_url=<URL>",  # ✅ NUOVO
-                "/playlist": "Playlist builder - ?url=<definizioni>",
-                "/builder": "Interfaccia web per playlist builder",
-                "/segment/{segment}": "Proxy per segmenti .ts - ?base_url=<URL>",
-                "/license": "Proxy licenze DRM (ClearKey/Widevine) - ?url=<URL> o ?clearkey=<id:key>",
-                "/info": "Pagina HTML con informazioni sul server",
-                "/api/info": "Endpoint JSON con informazioni sul server"
+                "/proxy/hls/manifest.m3u8": "Proxy HLS (MFP compatibility) - ?d=<URL>",
+                "/proxy/mpd/manifest.m3u8": "Proxy MPD (MFP compatibility) - ?d=<URL>",
+                "/proxy/manifest.m3u8": "Legacy Proxy - ?url=<URL>",
+                "/key": "AES-128 key proxy - ?key_url=<URL>",  # ✅ NEW
+                "/playlist": "Playlist builder - ?url=<definitions>",
+                "/builder": "Web interface for playlist builder",
+                "/segment/{segment}": "Proxy for .ts segments - ?base_url=<URL>",
+                "/license": "DRM license proxy (ClearKey/Widevine) - ?url=<URL> or ?clearkey=<id:key>",
+                "/info": "HTML page with server information",
+                "/api/info": "JSON endpoint with server information"
             },
             "usage_examples": {
                 "proxy_hls": "/proxy/hls/manifest.m3u8?d=https://example.com/stream.m3u8",
                 "proxy_mpd": "/proxy/mpd/manifest.m3u8?d=https://example.com/stream.mpd",
-                "aes_key": "/key?key_url=https://server.com/key.bin",  # ✅ NUOVO
+                "aes_key": "/key?key_url=https://server.com/key.bin",  # ✅ NEW
                 "playlist": "/playlist?url=http://example.com/playlist1.m3u8;http://example.com/playlist2.m3u8",
                 "custom_headers": "/proxy/hls/manifest.m3u8?d=<URL>&h_Authorization=Bearer%20token"
             }
@@ -1469,12 +1467,12 @@ class HLSProxy:
         return web.json_response(info)
 
     def _prefetch_next_segments(self, current_url, init_url, key, key_id, headers):
-        """Identifica i prossimi segmenti e avvia il download in background."""
+        """Identifies the next segments and starts background download."""
         try:
             parsed = urllib.parse.urlparse(current_url)
             path = parsed.path
             
-            # Cerca pattern numerico alla fine del path (es. segment-1.m4s)
+            # Look for numeric pattern at the end of the path (e.g. segment-1.m4s)
             match = re.search(r'([-_])(\d+)(\.[^.]+)$', path)
             if not match:
                 return
@@ -1508,14 +1506,14 @@ class HLSProxy:
             logger.warning(f"⚠️ Prefetch error: {e}")
 
     async def _fetch_and_cache_segment(self, url, init_url, key, key_id, headers, cache_key):
-        """Scarica, decripta e mette in cache un segmento in background."""
+        """Downloads, decrypts, and caches a segment in the background."""
         try:
             if decrypt_segment is None:
                 return
 
             session = await self._get_session()
             
-            # Download Init (usa cache se possibile)
+            # Download Init (use cache if possible)
             init_content = b""
             if init_url:
                 if init_url in self.init_cache:
@@ -1536,7 +1534,7 @@ class HLSProxy:
             try:
                 async with session.get(url, headers=headers, ssl=not disable_ssl, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status == 200:
-                        segment_content = await resp.read()
+                        return await resp.read()
             except Exception:
                 pass
 
@@ -1556,7 +1554,7 @@ class HLSProxy:
                 self.prefetch_tasks.remove(cache_key)
 
     async def _remux_to_ts(self, content):
-        """Converte segmenti (fMP4) in MPEG-TS usando FFmpeg pipe."""
+        """Converts segments (fMP4) to MPEG-TS using FFmpeg pipe."""
         try:
             cmd = [
                 'ffmpeg',
@@ -1595,7 +1593,7 @@ class HLSProxy:
             return None
 
     async def handle_decrypt_segment(self, request):
-        """Decripta segmenti fMP4 lato server per ClearKey (legacy mode)."""
+        """Decrypts fMP4 segments server-side for ClearKey (legacy mode)."""
         if not check_password(request):
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
@@ -1633,7 +1631,7 @@ class HLSProxy:
                 del self.segment_cache[cache_key]
 
         try:
-            # Ricostruisce gli headers per le richieste upstream
+            # Reconstruct headers for upstream requests
             headers = {
                 'Connection': 'keep-alive',
                 'Accept-Encoding': 'identity'
@@ -1702,12 +1700,12 @@ class HLSProxy:
                 logger.info(f"🔓 Skip decrypt mode - remuxing without decryption")
                 combined_content = init_content + segment_content
             else:
-                # Decripta con PyCryptodome
+                # Decrypt with PyCryptodome
                 # Decrypt in thread pool to avoid blocking event loop
                 loop = asyncio.get_event_loop()
                 combined_content = await loop.run_in_executor(None, decrypt_segment, init_content, segment_content, key_id, key)
 
-            # Leggero REMUX to TS
+            # Lightweight REMUX to TS
             ts_content = await self._remux_to_ts(combined_content)
             if not ts_content:
                  logger.warning("⚠️ Remux failed, serving raw fMP4")
@@ -1730,7 +1728,7 @@ class HLSProxy:
             # Prefetch next segments in background
             self._prefetch_next_segments(url, init_url, key, key_id, headers)
 
-            # Invia Risposta
+            # Send Response
             return web.Response(
                 body=ts_content,
                 status=200,
@@ -1748,13 +1746,13 @@ class HLSProxy:
 
     async def handle_generate_urls(self, request):
         """
-        Endpoint compatibile con MediaFlow-Proxy per generare URL proxy.
-        Supporta la richiesta POST da ilCorsaroViola.
+        Endpoint compatible with MediaFlow-Proxy to generate proxy URLs.
+        Supports POST requests from ilCorsaroViola.
         """
         try:
             data = await request.json()
             
-            # Verifica password se presente nel body (ilCorsaroViola la manda qui)
+            # Verify password if present in body (ilCorsaroViola sends it here)
             req_password = data.get('api_password')
             if API_PASSWORD and req_password != API_PASSWORD:
                  # Fallback: check standard auth methods if body auth fails or is missing
@@ -1764,21 +1762,21 @@ class HLSProxy:
 
             urls_to_process = data.get('urls', [])
             
-            # --- LOGGING RICHIESTO ---
+            # --- REQUESTED LOGGING ---
             client_ip = request.remote
-            exit_strategy = "IP del Server (Diretto)"
+            exit_strategy = "Server IP (Direct)"
             if GLOBAL_PROXIES:
-                exit_strategy = f"Proxy Globale Random (Pool di {len(GLOBAL_PROXIES)} proxy)"
+                exit_strategy = f"Random Global Proxy ({len(GLOBAL_PROXIES)} proxy pool)"
             
-            logger.info(f"🔄 [Generate URLs] Richiesta da Client IP: {client_ip}")
-            logger.info(f"    -> Strategia di uscita prevista per lo stream: {exit_strategy}")
+            logger.info(f"🔄 [Generate URLs] Request from Client IP: {client_ip}")
+            logger.info(f"    -> Predicted exit strategy for stream: {exit_strategy}")
             if urls_to_process:
-                logger.info(f"    -> Generazione di {len(urls_to_process)} URL proxy per destinazione: {urls_to_process[0].get('destination_url', 'N/A')}")
+                logger.info(f"    -> Generating {len(urls_to_process)} proxy URLs for destination: {urls_to_process[0].get('destination_url', 'N/A')}")
             # -------------------------
 
             generated_urls = []
             
-            # Determina base URL del proxy
+            # Determine proxy base URL
             scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
             host = request.headers.get('X-Forwarded-Host', request.host)
             proxy_base = f"{scheme}://{host}"
@@ -1791,22 +1789,22 @@ class HLSProxy:
                 endpoint = item.get('endpoint', '/proxy/stream')
                 req_headers = item.get('request_headers', {})
                 
-                # Costruisci query params
+                # Build query params
                 encoded_url = urllib.parse.quote(dest_url, safe='')
                 params = [f"d={encoded_url}"]
                 
-                # Aggiungi headers come h_ params
+                # Add headers as h_ params
                 for key, value in req_headers.items():
                     params.append(f"h_{urllib.parse.quote(key)}={urllib.parse.quote(value)}")
                 
-                # Aggiungi password se necessaria
+                # Add password if necessary
                 if API_PASSWORD:
                     params.append(f"api_password={API_PASSWORD}")
                 
-                # Costruisci URL finale
+                # Build final URL
                 query_string = "&".join(params)
                 
-                # Assicuriamoci che l'endpoint inizi con /
+                # Ensure the endpoint starts with /
                 if not endpoint.startswith('/'):
                     endpoint = '/' + endpoint
                 
@@ -1820,15 +1818,15 @@ class HLSProxy:
             return web.Response(text=str(e), status=500)
 
     async def handle_proxy_ip(self, request):
-        """Restituisce l'indirizzo IP pubblico del server (o del proxy se configurato)."""
+        """Returns the public IP address of the server (or the proxy if configured)."""
         if not check_password(request):
             return web.Response(status=401, text="Unauthorized: Invalid API Password")
 
         try:
-            # Usa un proxy globale se configurato, altrimenti connessione diretta
+            # Use a global proxy if configured, otherwise direct connection
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
             
-            # Crea una sessione dedicata con il proxy configurato
+            # Create a dedicated session with the configured proxy
             if proxy:
                 logger.info(f"🌍 Checking IP via proxy: {proxy}")
                 connector = ProxyConnector.from_url(proxy)
@@ -1837,7 +1835,7 @@ class HLSProxy:
             
             timeout = ClientTimeout(total=10)
             async with ClientSession(timeout=timeout, connector=connector) as session:
-                # Usa un servizio esterno per determinare l'IP pubblico
+                # Use an external service to determine the public IP
                 async with session.get('https://api.ipify.org?format=json') as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -1851,7 +1849,7 @@ class HLSProxy:
             return web.Response(text=str(e), status=500)
 
     async def cleanup(self):
-        """Pulizia delle risorse"""
+        """Resource cleanup"""
         try:
             if self.session and not self.session.closed:
                 await self.session.close()
@@ -1866,4 +1864,4 @@ class HLSProxy:
                 if hasattr(extractor, 'close'):
                     await extractor.close()
         except Exception as e:
-            logger.error(f"Errore durante cleanup: {e}")
+            logger.error(f"Error during cleanup: {e}")

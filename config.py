@@ -3,24 +3,24 @@ import logging
 import random
 from dotenv import load_dotenv
 
-load_dotenv() # Carica le variabili dal file .env
+load_dotenv() # Load variables from .env file
 
 # Configurazione logging
-# ✅ CORREZIONE: Imposta un formato standard e assicurati che il logger 'aiohttp.access'
-# non venga silenziato, permettendo la visualizzazione dei log di accesso.
+# ✅ FIX: Set a standard format and ensure that the 'aiohttp.access' logger
+# is not silenced, allowing access logs to be displayed.
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Silenzia il warning asyncio "Unknown child process pid" (race condition nota in asyncio)
+# Silence the asyncio "Unknown child process pid" warning (known race condition in asyncio)
 class AsyncioWarningFilter(logging.Filter):
     def filter(self, record):
         return "Unknown child process pid" not in record.getMessage()
 
 logging.getLogger('asyncio').addFilter(AsyncioWarningFilter())
 
-# Silenzia i log di accesso di aiohttp a meno che non siano errori
+# Silence aiohttp access logs unless they are errors
 # logging.getLogger('aiohttp.access').setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
@@ -28,31 +28,31 @@ logger.setLevel(logging.INFO)
 
 # --- Configurazione Proxy ---
 def parse_proxies(proxy_env_var: str) -> list:
-    """Analizza una stringa di proxy separati da virgola da una variabile d'ambiente."""
+    """Parses a comma-separated proxy string from an environment variable."""
     proxies_str = os.environ.get(proxy_env_var, "").strip()
     if proxies_str:
         return [p.strip() for p in proxies_str.split(',') if p.strip()]
     return []
 
 def parse_transport_routes() -> list:
-    """Analizza TRANSPORT_ROUTES nel formato {URL=domain, PROXY=proxy, DISABLE_SSL=true/false}, {URL=domain2, PROXY=proxy2}"""
+    """Parses TRANSPORT_ROUTES in the format {URL=domain, PROXY=proxy, DISABLE_SSL=true/false}, {URL=domain2, PROXY=proxy2}"""
     routes_str = os.environ.get('TRANSPORT_ROUTES', "").strip()
     if not routes_str:
         return []
 
     routes = []
     try:
-        # Rimuovi spazi e dividi per }, {
+        # Remove spaces and split by }, {
         route_parts = [part.strip() for part in routes_str.replace(' ', '').split('},{')]
 
         for part in route_parts:
             if not part:
                 continue
 
-            # Rimuovi { e } se presenti
+            # Remove { and } if present
             part = part.strip('{}')
 
-            # Parsea URL=..., PROXY=..., DISABLE_SSL=...
+            # Parse URL=..., PROXY=..., DISABLE_SSL=...
             url_match = None
             proxy_match = None
             disable_ssl_match = None
@@ -74,42 +74,42 @@ def parse_transport_routes() -> list:
                 })
 
     except Exception as e:
-        logger.warning(f"Errore nel parsing di TRANSPORT_ROUTES: {e}")
+        logger.warning(f"Error parsing TRANSPORT_ROUTES: {e}")
 
     return routes
 
 def get_proxy_for_url(url: str, transport_routes: list, global_proxies: list) -> str:
-    """Trova il proxy appropriato per un URL basato su TRANSPORT_ROUTES"""
+    """Finds the appropriate proxy for a URL based on TRANSPORT_ROUTES"""
     if not url or not transport_routes:
         return random.choice(global_proxies) if global_proxies else None
 
-    # Cerca corrispondenze negli URL patterns
+    # Search for matches in URL patterns
     for route in transport_routes:
         url_pattern = route['url']
         if url_pattern in url:
             proxy_value = route['proxy']
             if proxy_value:
-                # Se è un singolo proxy, restituiscilo
+                # If it's a single proxy, return it
                 return proxy_value
             else:
-                # Se proxy è vuoto, usa connessione diretta
+                # If proxy is empty, use direct connection
                 return None
 
-    # Se non trova corrispondenza, usa global proxies
+    # If no match found, use global proxies
     return random.choice(global_proxies) if global_proxies else None
 
 def get_ssl_setting_for_url(url: str, transport_routes: list) -> bool:
-    """Determina se SSL deve essere disabilitato per un URL basato su TRANSPORT_ROUTES"""
+    """Determines if SSL should be disabled for a URL based on TRANSPORT_ROUTES"""
     if not url or not transport_routes:
         return False  # Default: SSL enabled
 
-    # Cerca corrispondenze negli URL patterns
+    # Search for matches in URL patterns
     for route in transport_routes:
         url_pattern = route['url']
         if url_pattern in url:
             return route.get('disable_ssl', False)
 
-    # Se non trova corrispondenza, SSL abilitato per default
+    # If no match found, SSL enabled by default
     return False
 
 # Configurazione proxy
@@ -117,8 +117,8 @@ GLOBAL_PROXIES = parse_proxies('GLOBAL_PROXY')
 TRANSPORT_ROUTES = parse_transport_routes()
 
 # Logging configurazione proxy
-if GLOBAL_PROXIES: logging.info(f"🌍 Caricati {len(GLOBAL_PROXIES)} proxy globali.")
-if TRANSPORT_ROUTES: logging.info(f"🚦 Caricate {len(TRANSPORT_ROUTES)} regole di trasporto.")
+if GLOBAL_PROXIES: logging.info(f"🌍 Loaded {len(GLOBAL_PROXIES)} global proxies.")
+if TRANSPORT_ROUTES: logging.info(f"🚦 Loaded {len(TRANSPORT_ROUTES)} transport rules.")
 
 API_PASSWORD = os.environ.get("API_PASSWORD")
 PORT = int(os.environ.get("PORT", 7860))
@@ -137,12 +137,12 @@ if DVR_ENABLED and not os.path.exists(RECORDINGS_DIR):
 # MPD Processing Mode: 'ffmpeg' (transcoding) or 'legacy' (mpd_converter)
 MPD_MODE = os.environ.get("MPD_MODE", "legacy").lower()
 if MPD_MODE not in ("ffmpeg", "legacy"):
-    logging.warning(f"⚠️ MPD_MODE '{MPD_MODE}' non valido. Uso 'legacy' come default.")
+    logging.warning(f"⚠️ Invalid MPD_MODE '{MPD_MODE}'. Using 'legacy' as default.")
     MPD_MODE = "legacy"
 logging.info(f"🎬 MPD Mode: {MPD_MODE}")
 
 def check_password(request):
-    """Verifica la password API se impostata."""
+    """Verifies the API password if set."""
     if not API_PASSWORD:
         return True
 
