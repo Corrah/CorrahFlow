@@ -1,3 +1,4 @@
+import asyncio
 import random
 import logging
 import ssl
@@ -125,8 +126,16 @@ class GenericHLSExtractor:
                     clean_path = urllib.parse.quote(parsed.path)
                     safe_url = urllib.parse.urlunparse(parsed._replace(path=clean_path))
                 
-                logger.info(f"🔗 Resolving redirect for suspected redirector: {safe_url}")
-                async with session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
+                # ✅ FIX: Try to use a session WITHOUT proxy for resolution if possible, 
+                # as Torrentio/Cloudflare often blocks public datacenter proxies.
+                resolution_session = session
+                if self.proxies:
+                    # Create a temporary direct session for resolution
+                    resolution_session = ClientSession(timeout=ClientTimeout(total=20), connector=TCPConnector(ssl=False))
+                
+                try:
+                    logger.info(f"🔗 Resolving redirect for suspected redirector: {safe_url}")
+                    async with resolution_session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
                     if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
                         redirected_url = resp.headers['Location']
                         if not redirected_url.startswith('http'):
@@ -141,6 +150,10 @@ class GenericHLSExtractor:
                         }
                     else:
                         logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx). Headers: {dict(resp.headers)}")
+                finally:
+                    # Clean up temporary session if created
+                    if resolution_session is not session:
+                        await resolution_session.close()
             except asyncio.TimeoutError:
                 logger.warning(f"⚠️ Timeout (20s) resolving redirect for: {url}")
             except Exception as e:
