@@ -35,7 +35,12 @@ if MPD_MODE == "legacy":
 VavooExtractor, DLHDExtractor, VixSrcExtractor, PlaylistBuilder, SportsonlineExtractor = None, None, None, None, None
 MixdropExtractor, VoeExtractor, StreamtapeExtractor, OrionExtractor, FreeshotExtractor = None, None, None, None, None
 
+
+# Default User-Agent for all outgoing requests
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+
 logger = logging.getLogger(__name__)
+
 
 # Conditional import of extractors
 try:
@@ -813,6 +818,10 @@ class HLSProxy:
             if request.headers.get('Content-Type'):
                 headers['Content-Type'] = request.headers.get('Content-Type')
 
+            # Ensure Default User-Agent exists
+            if not any(k.lower() == 'user-agent' for k in headers):
+                headers['User-Agent'] = DEFAULT_USER_AGENT
+
             # Read request body (DRM challenge)
             body = await request.read()
             
@@ -894,6 +903,10 @@ class HLSProxy:
                     if header_name.lower() == 'range':
                         continue
                     headers[header_name] = param_value
+
+            # Ensure Default User-Agent exists
+            if not any(k.lower() == 'user-agent' for k in headers):
+                headers['User-Agent'] = DEFAULT_USER_AGENT
 
             logger.info(f"🔑 Fetching AES key from: {key_url}")
             logger.info(f"   -> with headers: {headers}")
@@ -984,11 +997,14 @@ class HLSProxy:
             
             logger.info(f"📦 Proxy Segment: {segment_name}")
             
+            # Use default headers if none provided
+            segment_headers = {
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Referer": base_url
+            }
+
             # Handles proxy response for the segment
-            return await self._proxy_segment(request, segment_url, {
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-                "referer": base_url
-            }, segment_name)
+            return await self._proxy_segment(request, segment_url, segment_headers, segment_name)
             
         except Exception as e:
             logger.error(f"Error in .ts segment proxy: {str(e)}")
@@ -1003,6 +1019,10 @@ class HLSProxy:
             for header in ['range', 'if-none-match', 'if-modified-since']:
                 if header in request.headers:
                     headers[header] = request.headers[header]
+            
+            # Ensure Default User-Agent exists
+            if not any(k.lower() == 'user-agent' for k in headers):
+                headers['User-Agent'] = DEFAULT_USER_AGENT
             
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
             connector_kwargs = {}
@@ -1059,6 +1079,10 @@ class HLSProxy:
                 if h in headers:
                     del headers[h]
             
+            # Ensure Default User-Agent exists
+            if not any(k.lower() == 'user-agent' for k in headers):
+                headers['User-Agent'] = DEFAULT_USER_AGENT
+            
             proxy = random.choice(GLOBAL_PROXIES) if GLOBAL_PROXIES else None
             connector_kwargs = {}
             if proxy:
@@ -1077,13 +1101,6 @@ class HLSProxy:
                     headers['Authorization'] = headers.pop(key)
                 elif key.lower() == 'cookie':
                     headers['Cookie'] = headers.pop(key)
-
-            # ✅ TORRENTIO FIX: Always ensure Stremio UA and no Referer/Origin for Torrentio
-            if "strem.fun" in stream_url.lower():
-                headers['User-Agent'] = "Stremio/1.6.11"
-                headers.pop('Referer', None)
-                headers.pop('Origin', None)
-                # logger.info(f"🛡️ [Final Phase] Applied Torrentio Fix for: {stream_url[:50]}...")
 
             # ✅ FIX: Remove explicit duplicates if present (e.g. user-agent and User-Agent)
             # This can happen if GenericHLSExtractor adds 'user-agent' and we have 'User-Agent' from h_ params
@@ -1843,7 +1860,7 @@ class HLSProxy:
             timeout = ClientTimeout(total=10)
             async with ClientSession(timeout=timeout, connector=connector) as session:
                 # Use an external service to determine the public IP
-                async with session.get('https://api.ipify.org?format=json') as resp:
+                async with session.get('https://api.ipify.org?format=json', headers={"User-Agent": DEFAULT_USER_AGENT}) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         return web.json_response(data)
