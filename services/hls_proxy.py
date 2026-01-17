@@ -334,10 +334,16 @@ class HLSProxy:
             except:
                 pass
             
-            # ✅ FIX: Extract h_ headers from query params BEFORE calling get_extractor
-            # This ensures GenericHLSExtractor receives the correct Referer/Origin from h_ params
-            # instead of generating them based on the segment's domain.
-            combined_headers = dict(request.headers)
+            # ✅ FIX: Extract h_ headers and only specific safe headers from origin request.
+            # This prevents header leakage (like Referer/Origin from previous sessions)
+            # from being passed to sensitive extractors like Torrentio.
+            combined_headers = {}
+            # Take only ESSENTIAL headers from original client request
+            for h in ['User-Agent', 'Referer', 'Origin', 'Cookie', 'Authorization']:
+                if h in request.headers:
+                    combined_headers[h] = request.headers[h]
+            
+            # h_ params ALWAYS have priority and override everything else
             for param_name, param_value in request.query.items():
                 if param_name.startswith('h_'):
                     header_name = param_name[2:]
