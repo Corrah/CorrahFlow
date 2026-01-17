@@ -918,7 +918,7 @@ class HLSProxy:
                         hb_headers = {
                             'Authorization': headers.get('Authorization', ''),
                             'X-Channel-Key': headers.get('X-Channel-Key', ''),
-                            'User-Agent': headers.get('User-Agent', 'Mozilla/5.0'),
+                            'User-Agent': headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'),
                             'Referer': headers.get('Referer', ''),
                             'Origin': headers.get('Origin', ''),
                             'X-Client-Token': client_token or '',  # ✅ Token richiesto dal provider
@@ -987,7 +987,7 @@ class HLSProxy:
             
             # Gestisce la risposta del proxy per il segmento
             return await self._proxy_segment(request, segment_url, {
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
                 "referer": base_url
             }, segment_name)
             
