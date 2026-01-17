@@ -109,13 +109,21 @@ class GenericHLSExtractor:
                     "Accept-Language": "en-US,en;q=0.5"
                 }
                 
-                logger.info(f"🔗 Resolving redirect for suspected redirector: {url}")
-                async with session.get(url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=10)) as resp:
+                # ✅ FIX: Properly encode URL if it contains spaces or special characters
+                safe_url = url
+                if ' ' in url:
+                    # Parse and re-quote path parts to handle spaces correctly
+                    parsed = urllib.parse.urlparse(url)
+                    clean_path = urllib.parse.quote(parsed.path)
+                    safe_url = urllib.parse.urlunparse(parsed._replace(path=clean_path))
+                
+                logger.info(f"🔗 Resolving redirect for suspected redirector: {safe_url}")
+                async with session.get(safe_url, headers=resolution_headers, allow_redirects=False, timeout=ClientTimeout(total=20), ssl=False) as resp:
                     if resp.status in [301, 302, 303, 307, 308] and 'Location' in resp.headers:
                         redirected_url = resp.headers['Location']
                         # Ensure absolute URL
                         if not redirected_url.startswith('http'):
-                            redirected_url = urllib.parse.urljoin(url, redirected_url)
+                            redirected_url = urllib.parse.urljoin(safe_url, redirected_url)
                             
                         logger.info(f"✅ Resolved to final URL: {redirected_url[:100]}...")
                         return {
@@ -123,10 +131,12 @@ class GenericHLSExtractor:
                             "request_headers": headers,
                             "mediaflow_endpoint": "hls_proxy"
                         }
-                    elif resp.status >= 400:
-                        logger.warning(f"⚠️ Resolution returned status {resp.status}. Error body potentially present.")
+                    else:
+                        logger.warning(f"⚠️ Resolution returned status {resp.status} (Expected 3xx). Headers: {dict(resp.headers)}")
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ Timeout (20s) resolving redirect for: {url}")
             except Exception as e:
-                logger.warning(f"⚠️ Error resolving redirect: {e}")
+                logger.warning(f"⚠️ Error resolving redirect ({type(e).__name__}): {e}")
 
         return {
             "destination_url": url, 
