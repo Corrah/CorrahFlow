@@ -1,4 +1,4 @@
-# 🚀 EasyProxy - Server Proxy Universale per Streaming HLS
+# 🚀 EasyProxy - Universal Server Proxy for HLS Streaming
 
 ⚠️ DLHD NOT WORKING ANYMORE!
 
@@ -6,51 +6,51 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
 [![HLS](https://img.shields.io/badge/HLS-Streaming-red.svg)](https://developer.apple.com/streaming/)
 
-> **Un server proxy universale per streaming HLS, M3U8 e IPTV** 🎬  
-> Supporto nativo per Vavoo, DaddyLive HD e tutti i servizi di streaming  
-> Compatibile per addons Stremio utilizzandolo come MediaFlow Proxy
-> Interfaccia web integrata e configurazione zero
+> **A universal proxy server for HLS, M3U8, and IPTV streaming** 🎬  
+> Native support for Vavoo, DaddyLive HD, and all streaming services  
+> Compatible with Stremio addons when used as a MediaFlow Proxy  
+> Integrated web interface and zero configuration  
 
 ---
 
-## 📚 Indice
+## 📚 Contents
 
-- [✨ Caratteristiche Principali](#-caratteristiche-principali)
-- [💾 Setup Rapido](#-setup-rapido)
-- [☁️ Deploy Cloud](#️-deploy-cloud)
-- [💻 Installazione Locale](#-installazione-locale)
-- [⚙️ Configurazione Proxy](#️-configurazione-proxy)
-- [🧰 Utilizzo del Proxy](#-utilizzo-del-proxy)
-- [🔧 Configurazione](#-configurazione)
-- [📖 Architettura](#-architettura)
+- [✨ Key Features](#-key-features)
+- [💾 Quick Setup](#-quick-setup)
+- [☁️ Cloud Deploy](#️-cloud-deploy)
+- [💻 Local Installation](#-local-installation)
+- [⚙️ Proxy Configuration](#️-proxy-configuration)
+- [🧰 Usage](#-usage)
+- [🔧 Configuration Settings](#-configuration-settings)
+- [📖 Architecture](#-architecture)
 
 ---
 
-## ✨ Caratteristiche Principali
+## ✨ Key Features
 
-| 🎯 **Proxy Universale** | 🔐 **Estrattori Specializzati** | ⚡ **Performance** |
+| 🎯 **Universal Proxy** | 🔐 **Specialized Extractors** | ⚡ **Performance** |
 |------------------------|------------------------|-------------------|
-| HLS, M3U8, MPD, DLHD streams, VIXSRC | Vavoo, DLHD, Sportsonline, VixSrc | Connessioni async e keep-alive |
+| HLS, M3U8, MPD, DLHD streams, VIXSRC | Vavoo, DLHD, Sportsonline, VixSrc | Async connections and keep-alive |
 | **🔓 DRM Decryption** | **🎬 MPD to HLS** | **🔑 ClearKey Support** |
-| ClearKey via FFmpeg transcoding | Conversione automatica DASH → HLS | Server-side ClearKey per VLC |
+| ClearKey via FFmpeg transcoding | Automatic DASH → HLS conversion | Server-side ClearKey for VLC |
 
-| 🌐 **Multi-formato** | 🔄 **Retry Logic** | 🚀 **Scalabilità** |
+| 🌐 **Multi-format** | 🔄 **Retry Logic** | 🚀 **Scalability** |
 |--------------------|-------------------|------------------|
-| Supporto #EXTVLCOPT e #EXTHTTP | Tentativi automatici | Server asincrono |
+| Support for #EXTVLCOPT and #EXTHTTP | Automatic retries | Asynchronous server |
 
-| 🛠️ **Builder Integrato** | 📱 **Interfaccia Web** | 🔗 **Playlist Manager** |
+| 🛠️ **Integrated Builder** | 📱 **Web Interface** | 🔗 **Playlist Manager** |
 |--------------------------|----------------------|---------------------|
-| Combinazione playlist M3U | Dashboard completa | Gestione automatica headers |
-| **📼 DVR Integrato** | **⏯️ Smart Record** | **💾 Download** |
-| Registra mentre guardi | Start & Watch simultaneo | Scarica le tue registrazioni |
+| M3U playlist combination | Complete dashboard | Automatic header management |
+| **📼 Integrated DVR** | **⏯️ Smart Record** | **💾 Download** |
+| Record while watching | Simultaneous Start & Watch | Download your recordings |
 
 ---
 
-## 💾 Setup Rapido
+## 💾 Quick Setup
 
-### 🐳 Docker (Raccomandato)
+### 🐳 Docker (Recommended)
 
-**Assicurati di avere un file `Dockerfile` e `requirements.txt` nella root del progetto.**
+**Ensure you have a `Dockerfile` and `requirements.txt` in the root of the project.**
 
 ```bash
 git clone https://github.com/nzo66/EasyProxy.git
@@ -59,20 +59,20 @@ docker build -t EasyProxy .
 docker run -d -p 7860:7860 --name EasyProxy EasyProxy
 ```
 
-### 🐍 Python Diretto
+### 🐍 Direct Python
 
 ```bash
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
+python app.py
 ```
 
-**Server disponibile su:** `http://localhost:7860`
+**Server available at:** `http://localhost:7860`
 
 ---
 
-## ☁️ Deploy Cloud
+## ☁️ Cloud Deploy
 
 ### ▶️ Render
 
@@ -84,12 +84,12 @@ gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornW
 
 ### 🤖 HuggingFace Spaces
 
-1. Crea nuovo **Space** (SDK: *Docker*)
-2. Carica tutti i file
-3. Deploy automatico
-4. **Pronto!**
+1. Create a new **Space** (SDK: *Docker*)
+2. Upload all files
+3. Automatic deploy
+4. **Ready!**
 
-**Alternativa:** Come alternativa, puoi copiare il contenuto del file `Dockerfile-hf` e metterlo su HuggingFace, impostando `api_password` come secret.
+**Alternative:** Alternatively, you can copy the content of final `Dockerfile-hf` and put it on HuggingFace, setting `api_password` as a secret.
 
 ### 🌐 Railway / Heroku
 
@@ -102,55 +102,55 @@ heroku create EasyProxy && git push heroku main
 ```
 
 ### 🚀 Koyeb
-1. Crea una nuova **Web Service** su Koyeb.
-2. Seleziona **GitHub** come fonte e inserisci l'URL del repository: `https://github.com/nzo66/EasyProxy`
-3. Seleziona Dockerfile
-4. Seleziona CPU Eco - Free
-5. Vai in **Environment variables**.
-6. Aggiungi la variabile `PORT` con valore `8000` (richiesto da Koyeb).
+1. Create a new **Web Service** on Koyeb.
+2. Select **GitHub** as the source and enter the repository URL: `https://github.com/nzo66/EasyProxy`
+3. Select Dockerfile
+4. Select CPU Eco - Free
+5. Go to **Environment variables**.
+6. Add the `PORT` variable with value `8000` (required by Koyeb).
 7. Deploy!
 
-### 🎯 Configurazione Cloud Ottimale
+### 🎯 Optimal Cloud Configuration
 
-**Il proxy funziona senza configurazione!**
+**The proxy works without configuration!**
 
-Ottimizzato per:
-- ✅ **Piattaforme gratuite** (HuggingFace, Render Free)
-- ✅ **Server limitati** (512MB - 1GB RAM)
-- ✅ **Streaming diretto** senza cache
-- ✅ **Massima compatibilità** con tutti i servizi
+Optimized for:
+- ✅ **Free platforms** (HuggingFace, Render Free)
+- ✅ **Limited servers** (512MB - 1GB RAM)
+- ✅ **Direct streaming** without cache
+- ✅ **Maximum compatibility** with all services
 
 ---
 
-## 💻 Installazione Locale
+## 💻 Local Installation
 
-### 📋 Requisiti
+### 📋 Requirements
 
 - **Python 3.8+**
-- **FFmpeg** (necessario per transcoding MPD streams)
+- **FFmpeg** (necessary for transcoding MPD streams)
 - **aiohttp**
-- **gunicorn**
+- **gunicorn** (optional, recommended for Linux)
 
-> ⚠️ **Nota:** Se non usi Docker, devi installare FFmpeg manualmente:
-> - **Windows**: Scarica da [ffmpeg.org](https://ffmpeg.org/download.html) e aggiungi al PATH
+> ⚠️ **Note:** If not using Docker, you must install FFmpeg manually:
+> - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
 > - **Linux/Debian**: `sudo apt install ffmpeg`
 > - **macOS**: `brew install ffmpeg`
 > - **Termux**: `pkg install ffmpeg`
 
-### 🔧 Installazione Completa
+### 🔧 Full Installation
 
 ```bash
 # Clone repository
 git clone https://github.com/nzo66/EasyProxy.git
 cd EasyProxy
 
-# Installa dipendenze
+# Install dependencies
 pip install -r requirements.txt
 
-# Avvio 
+# Start 
 gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
 
-# Avvio su Windows
+# Start on Windows
 python app.py
 ```
 
@@ -164,20 +164,20 @@ cd EasyProxy
 pkg install clang libxml2 libxslt python
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:7860 --workers 4 --worker-class aiohttp.worker.GunicornWebWorker app:app
+python app.py
 ```
 
-### 🐳 Docker Avanzato
+### 🐳 Advanced Docker
 
 ```bash
-# Build personalizzata
+# Custom Build
 docker build -t EasyProxy .
 
-# Run con configurazioni personalizzate
+# Run with custom configurations
 docker run -d -p 7860:7860 \
   --name EasyProxy EasyProxy
 
-# Run con volume per logs
+# Run with volume for logs
 docker run -d -p 7860:7860 \
   -v $(pwd)/logs:/app/logs \
   --name EasyProxy EasyProxy
@@ -185,49 +185,49 @@ docker run -d -p 7860:7860 \
 
 ---
 
-## ⚙️ Configurazione Proxy
+## ⚙️ Proxy Configuration
 
-Il modo più semplice per configurare i proxy è tramite un file `.env`.
+The easiest way to configure proxies is through a `.env` file.
 
-1.  **Crea un file `.env`** nella cartella principale del progetto (puoi rinominare il file `.env.example`).
-2.  **Aggiungi le tue variabili proxy** al file `.env`.
+1.  **Create a `.env` file** in the main project folder (you can rename the `.env.example` file).
+2.  **Add your proxy variables** to the `.env` file.
 
-**Esempio di file `.env`:**
+**Example `.env` file:**
 
 ```env
-# Proxy globale per tutto il traffico
+# Global proxy for all traffic
 GLOBAL_PROXY=http://user:pass@myproxy.com:8080
 
-# --- Regole di Trasporto (TRANSPORT_ROUTES) ---
-# Sistema avanzato per routing proxy basato su URL patterns.
-# Formato: {URL=pattern, PROXY=proxy_url, DISABLE_SSL=true}, {URL=pattern2, PROXY=proxy_url2, DISABLE_SSL=true}
-# - URL: pattern da cercare nell'URL (es. vavoo.to, dlhd.dad, giokko.ru)
-# - PROXY: proxy da usare (lascia vuoto per connessione diretta)
-# - DISABLE_SSL: per disattivare la verifica ssl
+# --- Transport Rules (TRANSPORT_ROUTES) ---
+# Advanced system for proxy routing based on URL patterns.
+# Format: {URL=pattern, PROXY=proxy_url, DISABLE_SSL=true}, {URL=pattern2, PROXY=proxy_url2, DISABLE_SSL=true}
+# - URL: pattern to search for in the URL (e.g., vavoo.to, dlhd.dad, giokko.ru)
+# - PROXY: proxy to use (leave empty for direct connection)
+# - DISABLE_SSL: to disable SSL verification
 
 TRANSPORT_ROUTES={URL=vavoo.to, PROXY=socks5://proxy1:1080, DISABLE_SSL=true}, {URL=dlhd.dad, PROXY=http://proxy2:8080, DISABLE_SSL=true}
 
-# Password per proteggere le API
+# Password to protect the APIs
 API_PASSWORD=mysecretpassword
 
-# --- Modalità Elaborazione MPD ---
-# Scegli come gestire gli stream MPD/DASH:
-# - ffmpeg: Transcoding via FFmpeg (richiede FFmpeg installato, alta CPU ma sync A/V migliore)
-# - legacy: Usa mpd_converter + drm_decrypter (più leggero ma possibili problemi di compatibilità)
+# --- MPD Processing Mode ---
+# Choose how to handle MPD/DASH streams:
+# - ffmpeg: Transcoding via FFmpeg (requires FFmpeg installed, high CPU but better A/V sync)
+# - legacy: Uses mpd_converter + drm_decrypter (lighter but possible compatibility issues)
 MPD_MODE=legacy
 ```
 
-Le variabili supportate sono:
-- `GLOBAL_PROXY`: Proxy di fallback per tutte le richieste.
-- `TRANSPORT_ROUTES`: Sistema avanzato per routing proxy basato su URL patterns.
-- `PORT`: Porta su cui il server ascolta (default: 7860).
-- `API_PASSWORD`: Password per proteggere l'accesso alle API.
-- `MPD_MODE`: Modalità elaborazione MPD (`ffmpeg` o `legacy`). Default: `legacy`.
+Supported variables:
+- `GLOBAL_PROXY`: Fallback proxy for all requests.
+- `TRANSPORT_ROUTES`: Advanced system for proxy routing based on URL patterns.
+- `PORT`: Port the server listens on (default: 7860).
+- `API_PASSWORD`: Password to protect API access.
+- `MPD_MODE`: MPD processing mode (`ffmpeg` or `legacy`). Default: `legacy`.
 
-**Esempio per cambiare la porta:**
+**Example to change the port:**
 
 ```env
-# Cambia la porta del server (default: 7860)
+# Change the server port (default: 7860)
 PORT=8080
 ```
 
@@ -237,205 +237,204 @@ PORT=8080
 
 ### 🔍 Extractor API (`/extractor/video`)
 
-Questo endpoint **non può essere aperto direttamente** senza parametri. Serve per estrarre l'URL diretto dello stream da servizi supportati (come Vavoo, DLHD, ecc.).
+This endpoint **cannot be opened directly** without parameters. It is used to extract the direct stream URL from supported services (like Vavoo, DLHD, etc.).
 
-**Info e Aiuto:**
-Se apri `/extractor` o `/extractor/video` senza parametri, riceverai una risposta JSON con le istruzioni d'uso e la lista degli host supportati.
+**Info and Help:**
+If you open `/extractor` or `/extractor/video` without parameters, you will receive a JSON response with instructions and a list of supported hosts.
 
-**Come si usa:**
-**Come si usa:**
-Devi aggiungere `?url=` (o `?d=`) seguito dal link del video che vuoi processare.
+**How to use:**
+You must add `?url=` (or `?d=`) followed by the video link you want to process.
 
-**Esempi Pratici:**
+**Practical Examples:**
 
-1.  **Ottenere il JSON con i dettagli (Default):**
+1.  **Get JSON with details (Default):**
     ```
-    http://tuo-server:7860/extractor/video?url=https://vavoo.to/channel/123
+    http://your-server:7860/extractor/video?url=https://vavoo.to/channel/123
     ```
-    *Restituisce un JSON con `destination_url`, `request_headers`, ecc.*
+    *Returns a JSON with `destination_url`, `request_headers`, etc.*
 
-2.  **Reindirizzare direttamente allo stream (Redirect):**
-    Aggiungi `&redirect_stream=true`. Utile per mettere il link direttamente in un player.
+2.  **Redirect directly to stream (Redirect):**
+    Add `&redirect_stream=true`. Useful for putting the link directly into a player.
     ```
-    http://tuo-server:7860/extractor/video?url=https://daddylive.mp/stream/stream-1.php&redirect_stream=true
+    http://your-server:7860/extractor/video?url=https://daddylive.mp/stream/stream-1.php&redirect_stream=true
     ```
-    *Il server risponderà con un redirect 302 verso l'URL del proxy pronto per la riproduzione.*
+    *The server will respond with a 302 redirect to the proxy URL ready for playback.*
 
-3.  **Specificare manualmente l'host (Bypass Auto-detect):**
-    Se l'auto-detection fallisce, puoi forzare l'uso di un estrattore specifico con `host=`.
+3.  **Manually specify the host (Bypass Auto-detect):**
+    If auto-detection fails, you can force the use of a specific extractor with `host=`.
     ```
-    http://tuo-server:7860/extractor/video?host=vavoo&url=https://custom-link.com/123
-    ```
-
-4.  **URL in Base64:**
-    Puoi passare l'URL codificato in Base64 nel parametro `url` (o `d`). Il server lo decodificherà automaticamente.
-    ```
-    http://tuo-server:7860/extractor/video?url=aHR0cHM6Ly9leGFtcGxlLmNvbS92aWRlbw==
+    http://your-server:7860/extractor/video?host=vavoo&url=https://custom-link.com/123
     ```
 
-**Parametri:**
-- `url` (o `d`): **(Obbligatorio)** L'URL originale del video o della pagina. Supporta URL in chiaro, URL Encoded o **Base64 Encoded**.
-- `host`: (Opzionale) Forza l'uso di un estrattore specifico (es. `vavoo`, `dlhd`, `mixdrop`, `voe`, `streamtape`, `orion`).
+4.  **Base64 URL:**
+    You can pass the Base64 encoded URL in the `url` (or `d`) parameter. The server will automatically decode it.
+    ```
+    http://your-server:7860/extractor/video?url=aHR0cHM6Ly9leGFtcGxlLmNvbS92aWRlbw==
+    ```
+
+**Parameters:**
+- `url` (or `d`): **(Required)** The original URL of the video or page. Supports plain text, URL Encoded, or **Base64 Encoded** links.
+- `host`: (Optional) Forces the use of a specific extractor (e.g., `vavoo`, `dlhd`, `mixdrop`, `voe`, `streamtape`, `orion`).
 - `redirect_stream`: 
-  - `true`: Esegue un redirect immediato allo stream giocabile.
-  - `false` (default): Restituisce i dati in formato JSON.
-- `api_password`: (Opzionale) Password API se configurata.
+  - `true`: Immediate redirect to the playable stream.
+  - `false` (default): Returns data in JSON format.
+- `api_password`: (Optional) API password if configured.
 
-**Servizi Supportati:**
-Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe e molto altro!
+**Supported Services:**
+Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe and much more!
 
 ### 📺 Proxy Endpoints
 
-Questi endpoint gestiscono il proxying effettivo dei flussi video.
+These endpoints handle the actual proxying of video flows.
 
-- **`/proxy/manifest.m3u8`**: Endpoint principale per HLS. Gestisce anche la conversione automatica da DASH (MPD) a HLS.
-- **`/proxy/hls/manifest.m3u8`**: Alias specifico per HLS.
-- **`/proxy/mpd/manifest.m3u8`**: Forza il trattamento dell'input come DASH (MPD).
-- **`/proxy/stream`**: Proxy universale per file statici (MP4, MKV, AVI) o stream progressivi.
+- **`/proxy/manifest.m3u8`**: Main endpoint for HLS. Also handles automatic conversion from DASH (MPD) to HLS.
+- **`/proxy/hls/manifest.m3u8`**: Specific alias for HLS.
+- **`/proxy/mpd/manifest.m3u8`**: Forces input to be treated as DASH (MPD).
+- **`/proxy/stream`**: Universal proxy for static files (MP4, MKV, AVI) or progressive streams.
 
-**Parametri Comuni:**
-- `url` (o `d`): URL dello stream originale.
-- `h_<header>`: Headers personalizzati (es. `h_User-Agent=VLC`).
-- `clearkey`: Chiavi di decrittazione DRM in formato `KID:KEY` (per stream MPD protetti).
+**Common Parameters:**
+- `url` (or `d`): URL of the original stream.
+- `h_<header>`: Custom headers (e.g., `h_User-Agent=VLC`).
+- `clearkey`: DRM decryption keys in `KID:KEY` format (for protected MPD streams).
 
-### 📼 DVR / Registrazioni
+### 📼 DVR / Recordings
 
-Il server include un sistema di registrazione (DVR) completo.
+The server includes a complete recording system (DVR).
 
-- **`/recordings`**: Interfaccia Web per gestire le registrazioni.
-- **`/record`**: Endpoint "smart" per iniziare a registrare e guardare contemporaneamente.
-  - Esempio: `/record?url=STREAM_URL&name=Film` -> Avvia rec e ridirige allo stream.
-- **`/api/recordings/start` (POST)**: Avvia una registrazione in background.
-- **`/api/recordings/{id}/stream`**: Guarda una registrazione in corso o completata.
-- **`/api/recordings/{id}/download`**: Scarica il file registrato.
+- **`/recordings`**: Web Interface to manage recordings.
+- **`/record`**: "Smart" endpoint to start recording and watching simultaneously.
+  - Example: `/record?url=STREAM_URL&name=Movie` -> Starts rec and redirects to stream.
+- **`/api/recordings/start` (POST)**: Starts a recording in the background.
+- **`/api/recordings/{id}/stream`**: Watch an ongoing or completed recording.
+- **`/api/recordings/{id}/download`**: Download the recorded file.
 
 ### 🛠️ Utilities
 
-- **`/builder`**: Interfaccia Web per il Playlist Builder.
-- **`/playlist`**: Endpoint per processare intere playlist M3U remote.
-- **`/info`**: Pagina HTML con lo stato del server e le versioni dei componenti.
-- **`/api/info`**: API JSON che restituisce lo stato del server.
-- **`/proxy/ip`**: Restituisce l'indirizzo IP pubblico del server (utile per debug VPN/Proxy).
-- **`/generate_urls`** (POST): Genera URL proxy in batch (usato dal Builder).
-- **`/license`**: Endpoint per gestire richieste di licenza DRM (se necessario).
+- **`/builder`**: Web Interface for the Playlist Builder.
+- **`/playlist`**: Endpoint to process entire remote M3U playlists.
+- **`/info`**: HTML page with server status and component versions.
+- **`/api/info`**: JSON API returning server status.
+- **`/proxy/ip`**: Returns the server's public IP address (useful for VPN/Proxy debugging).
+- **`/generate_urls`** (POST): Batch generates proxy URLs (used by the Builder).
+- **`/license`**: Endpoint to handle DRM license requests (if necessary).
 
 ---
 
-## 📚 Reference API Completa
+## 📚 Full API Reference
 
-Elenco completo di tutti gli endpoint disponibili nel server.
+Comprehensive list of all endpoints available in the server.
 
 ### 🏠 System & Public
-| Metodo | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |:---|:---|:---|
-| `GET` | `/` | Pagina principale con stato del server. |
-| `GET` | `/info` | Pagina informativa dettagliata. |
-| `GET` | `/builder` | Interfaccia Web Playlist Builder. |
-| `GET` | `/api/info` | API statuto del server (JSON). |
-| `GET` | `/proxy/ip` | Restituisce l'IP pubblico del server (utile per debug VPN). |
+| `GET` | `/` | Main page with server status. |
+| `GET` | `/info` | Detailed information page. |
+| `GET` | `/builder` | Playlist Builder Web Interface. |
+| `GET` | `/api/info` | Server status API (JSON). |
+| `GET` | `/proxy/ip` | Returns server's public IP (useful for VPN debug). |
 
 ### 📺 Proxy & Streaming
-| Metodo | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |:---|:---|:---|
-| `GET` | `/proxy/manifest.m3u8` | **Entrypoint Principale**. Auto-detect HLS/DASH. |
-| `GET` | `/proxy/hls/manifest.m3u8` | Alias specifico per HLS. |
-| `GET` | `/proxy/mpd/manifest.m3u8` | Forza input DASH (MPD) con conversione HLS. |
-| `GET` | `/proxy/stream` | Proxy generico per file statici (MP4, MKV) o progressivi. |
-| `GET` | `/playlist` | Generatore playlist M3U dinamiche. |
+| `GET` | `/proxy/manifest.m3u8` | **Main Entrypoint**. Auto-detect HLS/DASH. |
+| `GET` | `/proxy/hls/manifest.m3u8` | Specific alias for HLS. |
+| `GET` | `/proxy/mpd/manifest.m3u8` | Forces DASH (MPD) input with HLS conversion. |
+| `GET` | `/proxy/stream` | Generic proxy for static (MP4, MKV) or progressive files. |
+| `GET` | `/playlist` | Dynamic M3U playlist generator. |
 
 ### 🔍 Extractors
-| Metodo | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |:---|:---|:---|
-| `GET` | `/extractor/video` | Estrae link diretti da siti supportati (Vavoo, DLHD, ecc.). Restituisce JSON o redirect. |
+| `GET` | `/extractor/video` | Extracts direct links from supported sites (Vavoo, DLHD, etc.). Returns JSON or redirect. |
 
 ### 🔐 Keys & DRM
-| Metodo | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |:---|:---|:---|
-| `GET` | `/license` | Proxy per licenze DRM (ClearKey/Widevine). |
-| `POST` | `/license` | Proxy per licenze DRM (supporto POST payload). |
-| `GET` | `/key` | Proxy per chiavi di decrittazione AES-128 standard. |
+| `GET` | `/license` | Proxy for DRM licenses (ClearKey/Widevine). |
+| `POST` | `/license` | Proxy for DRM licenses (POST payload support). |
+| `GET` | `/key` | Proxy for standard AES-128 decryption keys. |
 
 ### 📼 DVR (Digital Video Recorder)
-| Metodo | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |:---|:---|:---|
-| `GET` | `/recordings` | **Interfaccia Web** gestione registrazioni. |
-| `GET` | `/record` | Avvia registrazione e ridirige allo stream (Smart Mode). |
-| `GET` | `/api/recordings` | Lista tutte le registrazioni (JSON). |
-| `GET` | `/api/recordings/active` | Lista solo registrazioni in corso. |
-| `GET` | `/api/recordings/{id}` | Dettagli di una singola registrazione. |
-| `POST` | `/api/recordings/start` | Avvia registrazione in background (JSON payload). |
-| `POST` | `/api/recordings/{id}/stop` | Ferma una registrazione attiva. |
-| `GET` | `/api/recordings/{id}/stream` | Guarda una registrazione (anche mentre registra). |
-| `GET` | `/api/recordings/{id}/download` | Scarica il file video registrato. |
-| `DELETE` | `/api/recordings/{id}` | Cancella una registrazione. |
+| `GET` | `/recordings` | **Web Interface** for recording management. |
+| `GET` | `/record` | Starts recording and redirects to stream (Smart Mode). |
+| `GET` | `/api/recordings` | List all recordings (JSON). |
+| `GET` | `/api/recordings/active` | List only ongoing recordings. |
+| `GET` | `/api/recordings/{id}` | Details of a single recording. |
+| `POST` | `/api/recordings/start` | Starts background recording (JSON payload). |
+| `POST` | `/api/recordings/{id}/stop` | Stops an active recording. |
+| `GET` | `/api/recordings/{id}/stream` | Watch a recording (even while recording). |
+| `GET` | `/api/recordings/{id}/download` | Download the recorded video file. |
+| `DELETE` | `/api/recordings/{id}` | Delete a recording. |
 
 ---
 
-## 🧰 Utilizzo del Proxy
+## 🧰 Usage
 
-Sostituisci `<server-ip>` con l'IP del tuo server.
+Replace `<server-ip>` with your server's IP address.
 
-### 🎯 Interfaccia Web Principale
+### 🎯 Main Web Interface
 
 ```
 http://<server-ip>:7860/
 ```
 
-### 📺 Proxy HLS Universale
+### 📺 Universal HLS Proxy
 
 ```
-http://<server-ip>:7860/proxy/manifest.m3u8?url=<URL_STREAM>
+http://<server-ip>:7860/proxy/manifest.m3u8?url=<STREAM_URL>
 ```
 
-**Supporta:**
-- **HLS (.m3u8)** - Streaming live e VOD
-- **M3U playlist** - Liste canali IPTV  
-- **MPD (DASH)** - Streaming adattivo con conversione automatica HLS
-- **MPD + ClearKey DRM** - Decrittazione server-side CENC (VLC compatible)
-- **DLHD streams** - Flussi dinamici
-- **VIXSRC** - Streaming VOD
-- **Sportsonline** - Streaming sportivo
-- **Mixdrop** - File hosting video
+**Supports:**
+- **HLS (.m3u8)** - Live and VOD streaming
+- **M3U playlist** - IPTV channel lists  
+- **MPD (DASH)** - Adaptive streaming with automatic HLS conversion
+- **MPD + ClearKey DRM** - Server-side CENC decryption (VLC compatible)
+- **DLHD streams** - Dynamic streams
+- **VIXSRC** - VOD streaming
+- **Sportsonline** - Sports streaming
+- **Mixdrop** - Video file hosting
 - **Voe** - Video hosting
 - **Streamtape** - Video hosting
 - **Orion** - Video streaming
 - **Freeshot/PopCDN** - CDN streaming
 
-**Esempi:**
+**Examples:**
 ```bash
-# Stream HLS generico
+# Generic HLS stream
 http://server:7860/proxy/manifest.m3u8?url=https://example.com/stream.m3u8
 
-# MPD con ClearKey DRM (decrittazione server-side)
+# MPD with ClearKey DRM (server-side decryption)
 http://server:7860/proxy/manifest.m3u8?url=https://cdn.com/stream.mpd&clearkey=KID:KEY
 
-# Playlist IPTV
+# IPTV Playlist
 http://server:7860/playlist?url=https://iptv-provider.com/playlist.m3u
 
-# Stream con headers personalizzati
+# Stream with custom headers
 http://server:7860/proxy/manifest.m3u8?url=https://stream.com/video.m3u8&h_user-agent=VLC&h_referer=https://site.com
 ```
 
-### 🔍 Estrazione Vavoo Automatico
+### 🔍 Automatic Vavoo Extraction
 
-**Risolve automaticamente:**
-- Link vavoo.to in stream diretti
-- Autenticazione API automatica
-- Headers ottimizzati per streaming
+**Automatically resolves:**
+- vavoo.to links into direct streams
+- Automatic API authentication
+- Optimized headers for streaming
 
-### 📡 Risoluzione DaddyLive HD Automatico
+### 📡 Automatic DaddyLive HD Resolution
 
-**Funzionalità:**
-- Risoluzione link DaddyLive HD
-- Bypass automatico restrizioni
-- Ottimizzazione qualità stream
+**Features:**
+- DaddyLive HD link resolution
+- Automatic restriction bypass
+- Stream quality optimization
 
-### ⚽ Risoluzione Sportsonline/Sportzonline Automatico
+### ⚽ Automatic Sportsonline/Sportzonline resolution
 
-**Funzionalità:**
-- Risoluzione link da `sportsonline.*` e `sportzonline.*`
-- Estrazione automatica da iframe
-- Supporto per decodifica Javascript (P.A.C.K.E.R.)
+**Features:**
+- Resolution of links from `sportsonline.*` and `sportzonline.*`
+- Automatic extraction from iframe
+- Support for Javascript decoding (P.A.C.K.E.R.)
 
 ### 🔗 Playlist Builder
 
@@ -443,163 +442,163 @@ http://server:7860/proxy/manifest.m3u8?url=https://stream.com/video.m3u8&h_user-
 http://<server-ip>:7860/builder
 ```
 
-**Interfaccia completa per:**
-- ✅ Combinare playlist multiple
-- ✅ Gestione automatica Vavoo e DLHD
-- ✅ Supporto #EXTVLCOPT e #EXTHTTP  
-- ✅ Estrazione automatica #KODIPROP ClearKey
-- ✅ Proxy automatico per tutti gli stream
-- ✅ Compatibilità VLC, Kodi, IPTV players
+**Complete interface for:**
+- ✅ Combining multiple playlists
+- ✅ Automatic Vavoo and DLHD management
+- ✅ #EXTVLCOPT and #EXTHTTP support  
+- ✅ Automatic #KODIPROP ClearKey extraction
+- ✅ Automatic proxy for all streams
+- ✅ Compatibility with VLC, Kodi, IPTV players
 
-### 🔑 Headers Personalizzati
+### 🔑 Custom Headers
 
-Aggiungi headers con prefisso `h_`:
+Add headers with the `h_` prefix:
 
 ```
 http://server:7860/proxy/manifest.m3u8?url=STREAM_URL&h_user-agent=CustomUA&h_referer=https://site.com&h_authorization=Bearer token123
 ```
 
-**Headers supportati:**
-- `h_user-agent` - User Agent personalizzato
-- `h_referer` - Sito di riferimento  
-- `h_authorization` - Token di autorizzazione
-- `h_origin` - Dominio origine
-- `h_*` - Qualsiasi header personalizzato
+**Supported Headers:**
+- `h_user-agent` - Custom User Agent
+- `h_referer` - Reference site  
+- `h_authorization` - Authorization token
+- `h_origin` - Origin domain
+- `h_*` - Any custom header
 
 ---
 
-## 📖 Architettura
+## 📖 Architecture
 
-### 🔄 Flusso di Elaborazione
+### 🔄 Processing Flow
 
-1. **Richiesta Stream** → Endpoint proxy universale
-2. **Rilevamento Servizio** → Auto-detect Vavoo/DLHD/Generic
-3. **Estrazione URL** → Risoluzione link reali
-4. **Proxy Stream** → Forward con headers ottimizzati
-5. **Risposta Client** → Stream diretto compatibile
+1. **Stream Request** → Universal proxy endpoint
+2. **Service Detection** → Auto-detect Vavoo/DLHD/Generic
+3. **URL Extraction** → Real link resolution
+4. **Proxy Stream** → Forward with optimized headers
+5. **Client Response** → Direct compatible stream
 
-### ⚡ Sistema Asincrono
+### ⚡ Asynchronous System
 
-- **aiohttp** - HTTP client non-bloccante
-- **Connection pooling** - Riutilizzo connessioni
-- **Retry automatico** - Gestione errori intelligente
+- **aiohttp** - Non-blocking HTTP client
+- **Connection pooling** - Reuse of connections
+- **Automatic retry** - Intelligent error management
 
-### 🔐 Gestione Autenticazione
+### 🔐 Authentication Management
 
-- **Vavoo** - Sistema signature automatico
-- **DaddyLive** - Headers specializzati  
-- **Generic** - Supporto Authorization standard
+- **Vavoo** - Automatic signature system
+- **DaddyLive** - Specialized headers  
+- **Generic** - Standard Authorization support
 
 ---
 
-## 🎯 Esempi Pratici
+## 🎯 Practical Examples
 
-### 📱 Player IPTV
+### 📱 IPTV Player
 
-Configura il tuo player con:
+Configure your player with:
 ```
-http://tuo-server:7860/proxy/manifest.m3u8?url=STREAM_URL
+http://your-server:7860/proxy/manifest.m3u8?url=STREAM_URL
 ```
 
 ### 🎬 VLC Media Player
 
 ```bash
-vlc "http://tuo-server:7860/proxy/manifest.m3u8?url=https://example.com/stream.m3u8"
+vlc "http://your-server:7860/proxy/manifest.m3u8?url=https://example.com/stream.m3u8"
 ```
 
 ### 📺 Kodi
 
-Aggiungi come sorgente:
+Add as a source:
 ```
-http://tuo-server:7860/proxy/manifest.m3u8?url=PLAYLIST_URL
+http://your-server:7860/proxy/manifest.m3u8?url=PLAYLIST_URL
 ```
 
-### 🌐 Browser Web
+### 🌐 Web Browser
 
-Apri direttamente nel browser:
+Open directly in the browser:
 ```
-http://tuo-server:7860/proxy/manifest.m3u8?url=https://stream.example.com/live.m3u8
+http://your-server:7860/proxy/manifest.m3u8?url=https://stream.example.com/live.m3u8
 ```
 
 ---
 
-### 🔧 Gestione Docker
+### 🔧 Docker Management
 
 ```bash
-# Logs in tempo reale
+# Real-time logs
 docker logs -f EasyProxy
 
-# Riavvio container
+# Restart container
 docker restart EasyProxy
 
 # Stop/Start
 docker stop EasyProxy
 docker start EasyProxy
 
-# Rimozione completa
+# Complete removal
 docker rm -f EasyProxy
 ```
 
 ---
 
-## 🚀 Prestazioni
+## 🚀 Performance
 
-### 📊 Benchmark Tipici
+### 📊 Typical Benchmarks
 
-| **Metric** | **Valore** | **Descrizione** |
+| **Metric** | **Value** | **Description** |
 |------------|------------|-----------------|
-| **Latenza** | <50ms | Overhead proxy minimo |
-| **Throughput** | Unlimited | Limitato dalla banda disponibile |
-| **Connessioni** | 1000+ | Simultanee supportate |
-| **Memoria** | 50-200MB | Utilizzo tipico |
+| **Latency** | <50ms | Minimal proxy overhead |
+| **Throughput** | Unlimited | Limited by available bandwidth |
+| **Connections** | 1000+ | Supported simultaneous connections |
+| **Memory** | 50-200MB | Typical usage |
 
-### ⚡ Ottimizzazioni
+### ⚡ Optimizations
 
-- **Connection Pooling** - Riutilizzo connessioni HTTP
-- **Async I/O** - Gestione non-bloccante delle richieste
-- **Keep-Alive** - Connessioni persistenti
-- **DNS Caching** - Cache risoluzione domini
-
----
-
-## 🤝 Contributi
-
-I contributi sono benvenuti! Per contribuire:
-
-1. **Fork** del repository
-2. **Crea** un branch per le modifiche (`git checkout -b feature/AmazingFeature`)
-3. **Commit** le modifiche (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** al branch (`git push origin feature/AmazingFeature`)
-5. **Apri** una Pull Request
-
-### 🐛 Segnalazione Bug
-
-Per segnalare bug, apri una issue includendo:
-- Versione del proxy
-- Sistema operativo
-- URL di test che causa il problema
-- Log di errore completo
-
-### 💡 Richieste Feature
-
-Per nuove funzionalità, apri una issue descrivendo:
-- Funzionalità desiderata
-- Caso d'uso specifico
-- Priorità (bassa/media/alta)
+- **Connection Pooling** - Reusing HTTP connections
+- **Async I/O** - Non-blocking request handling
+- **Keep-Alive** - Persistent connections
+- **DNS Caching** - Domain resolution cache
 
 ---
 
-## 📄 Licenza
+## 🤝 Contributing
 
-Questo progetto è distribuito sotto licenza MIT. Vedi il file `LICENSE` per maggiori dettagli.
+Contributions are welcome! To contribute:
+
+1. **Fork** the repository
+2. **Create** a branch for changes (`git checkout -b feature/AmazingFeature`)
+3. **Commit** the changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
+
+### 🐛 Bug Reporting
+
+To report bugs, open an issue including:
+- Proxy version
+- Operating system
+- Test URL causing the problem
+- Full error log
+
+### 💡 Feature Requests
+
+For new features, open an issue describing:
+- Desired functionality
+- Specific use case
+- Priority (low/medium/high)
+
+---
+
+## 📄 License
+
+This project is distributed under the MIT license. See the `LICENSE` file for more details.
 
 ---
 
 <div align="center">
 
-**⭐ Se questo progetto ti è utile, lascia una stella! ⭐**
+**⭐ If this project is helpful to you, leave a star! ⭐**
 
 > 🎉 **Enjoy Your Streaming!**  
-> Accedi ai tuoi contenuti preferiti ovunque, senza restrizioni, con controllo completo e performance ottimizzate.
+> Access your favorite content anywhere, without restrictions, with complete control and optimized performance.
 
 </div>
