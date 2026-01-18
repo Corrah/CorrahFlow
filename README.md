@@ -281,7 +281,7 @@ You must add `?url=` (or `?d=`) followed by the video link you want to process.
 - `api_password`: (Optional) API password if configured.
 
 **Supported Services:**
-Vavoo, DaddyLiveHD, Mixdrop, Orion, Sportsonline, Streamtape, VixSrc, Voe and much more!
+Vavoo, DaddyLiveHD, Doodstream, F16px, Fastream, Filelions, Filemoon, Freeshot, LiveTV, Lulustream, Maxstream, Mixdrop, OKru, Orion, Sportsonline, Streamtape, Streamwish, Supervideo, Turbovidplay, Uqload, Vidmoly, Vidoza, VixSrc, Voe and Generic (for any M3U8 URL).
 
 ### 📺 Proxy Endpoints
 
@@ -391,14 +391,29 @@ http://<server-ip>:7860/proxy/manifest.m3u8?url=<STREAM_URL>
 - **M3U playlist** - IPTV channel lists  
 - **MPD (DASH)** - Adaptive streaming with automatic HLS conversion
 - **MPD + ClearKey DRM** - Server-side CENC decryption (VLC compatible)
-- **DLHD streams** - Dynamic streams
-- **VIXSRC** - VOD streaming
+- **DLHD streams** - Dynamic streams (DaddyLiveHD)
+- **VixSrc** - VOD streaming
 - **Sportsonline** - Sports streaming
 - **Mixdrop** - Video file hosting
 - **Voe** - Video hosting
 - **Streamtape** - Video hosting
 - **Orion** - Video streaming
 - **Freeshot/PopCDN** - CDN streaming
+- **Doodstream** - Video hosting
+- **F16px** - Video streaming
+- **Fastream** - Video streaming
+- **Filelions** - Video hosting
+- **Filemoon** - Video hosting
+- **LiveTV** - Live TV streaming
+- **Lulustream** - Video streaming
+- **Maxstream** - Video streaming
+- **OKru** - Video hosting (ok.ru)
+- **Streamwish** - Video streaming
+- **Supervideo** - Video hosting
+- **Turbovidplay** - Video streaming
+- **Uqload** - Video hosting
+- **Vidmoly** - Video streaming
+- **Vidoza** - Video hosting
 
 **Examples:**
 ```bash
