@@ -17,11 +17,11 @@
 
 - [✨ Key Features](#-key-features)
 - [💾 Quick Setup](#-quick-setup)
-- [☁️ Cloud Deploy](#️-cloud-deploy)
+- [☁️ Cloud Deploy](#%EF%B8%8F-cloud-deploy)
 - [💻 Local Installation](#-local-installation)
-- [⚙️ Proxy Configuration](#️-proxy-configuration)
+- [⚙️ Proxy Configuration](#%EF%B8%8F-proxy-configuration)
 - [🧰 Usage](#-usage)
-- [🔧 Configuration Settings](#-configuration-settings)
+- [🎯 Practical Examples](#-practical-examples)
 - [📖 Architecture](#-architecture)
 
 ---
@@ -215,6 +215,25 @@ API_PASSWORD=mysecretpassword
 # - ffmpeg: Transcoding via FFmpeg (requires FFmpeg installed, high CPU but better A/V sync)
 # - legacy: Uses mpd_converter + drm_decrypter (lighter but possible compatibility issues)
 MPD_MODE=legacy
+
+# --- Log Level ---
+# Set the logging verbosity level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Default: WARNING (shows only warnings and errors for cleaner output)
+# Use DEBUG for development/troubleshooting, INFO for normal operation details
+LOG_LEVEL=WARNING
+
+# --- DVR/Recording Settings ---
+# Enable DVR/recording functionality (default: false)
+DVR_ENABLED=false
+
+# Directory where recordings will be saved (default: recordings)
+RECORDINGS_DIR=recordings
+
+# Maximum recording duration in seconds (default: 28800 = 8 hours)
+MAX_RECORDING_DURATION=28800
+
+# Auto-delete recordings older than X days (default: 7)
+RECORDINGS_RETENTION_DAYS=7
 ```
 
 Supported variables:
@@ -223,6 +242,11 @@ Supported variables:
 - `PORT`: Port the server listens on (default: 7860).
 - `API_PASSWORD`: Password to protect API access.
 - `MPD_MODE`: MPD processing mode (`ffmpeg` or `legacy`). Default: `legacy`.
+- `LOG_LEVEL`: used to config the log level verbosity, see env file for the different values.
+- `DVR_ENABLED`: enables the DVR functionality, <ins>needs to be switched to true</ins>.
+- `RECORDINGS_DIR`: directory where to save recordings.
+- `MAX_RECORDING_DURATION`: max recording duration.
+- `RECORDINGS_RETENTION_DAYS`: days after the recordings are deleted automatically, before deletion recordings completed can be downloaded.
 
 **Example to change the port:**
 
@@ -301,7 +325,7 @@ These endpoints handle the actual proxying of video flows.
 
 The server includes a complete recording system (DVR).
 
-- **`/recordings`**: Web Interface to manage recordings.
+- **`/recordings`**: Web Interface to manage recordings, <ins>if set, also the webpage requested via the browser needs to have the API_PASSWORD in the query string params</ins>.
 - **`/record`**: "Smart" endpoint to start recording and watching simultaneously.
   - Example: `/record?url=STREAM_URL&name=Movie` -> Starts rec and redirects to stream.
 - **`/api/recordings/start` (POST)**: Starts a recording in the background.
@@ -428,6 +452,15 @@ http://server:7860/playlist?url=https://iptv-provider.com/playlist.m3u
 
 # Stream with custom headers
 http://server:7860/proxy/manifest.m3u8?url=https://stream.com/video.m3u8&h_user-agent=VLC&h_referer=https://site.com
+```
+### 📼 DVR (Digital Video Recorder)
+
+Remember that to use the DVR functionality you need to enable it via the env var.
+If the proxy is secured with a password it needs to be sent with the query string in the url: `/recordings?api_password=<password>`.
+
+```
+# Web Interface for recording management
+http://<server-ip>:7860/recordings
 ```
 
 ### 🔍 Automatic Vavoo Extraction
