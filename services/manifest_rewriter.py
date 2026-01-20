@@ -83,7 +83,7 @@ class ManifestRewriter:
 
                     # Inietta ContentProtection
                     adaptation_sets = root.findall('.//mpd:AdaptationSet', ns)
-                    logger.info(f"🔎 Trovati {len(adaptation_sets)} AdaptationSet nel manifest.")
+                    logger.info(f"🔎 Found {len(adaptation_sets)} AdaptationSet in manifest.")
                     
                     for adaptation_set in adaptation_sets:
                         # RIMUOVI altri ContentProtection (es. Widevine)
@@ -91,7 +91,7 @@ class ManifestRewriter:
                             scheme = cp.get('schemeIdUri', '').lower()
                             if 'e2719d58-a985-b3c9-781a-007147f192ec' not in scheme:
                                 adaptation_set.remove(cp)
-                                logger.info(f"🗑️ Rimosso ContentProtection conflittuale: {scheme}")
+                                logger.info(f"🗑️ Removed conflicting ContentProtection: {scheme}")
 
                         # Verifica se esiste già ClearKey
                         existing_cp = False
@@ -102,10 +102,10 @@ class ManifestRewriter:
                         
                         if not existing_cp:
                             adaptation_set.insert(0, cp_element)
-                            logger.info(f"💉 Iniettato ContentProtection ClearKey statico in AdaptationSet")
+                            logger.info(f"💉 Injected static ClearKey ContentProtection in AdaptationSet")
 
                 except Exception as e:
-                    logger.error(f"❌ Errore nel parsing del parametro clearkey: {e}")
+                    logger.error(f"❌ Error parsing clearkey parameter: {e}")
 
             # --- GESTIONE PROXY LICENZE ESISTENTI ---
             for cp in root.findall('.//mpd:ContentProtection', ns):
@@ -134,11 +134,11 @@ class ManifestRewriter:
             return ET.tostring(root, encoding='unicode', method='xml')
 
         except Exception as e:
-            logger.error(f"❌ Errore durante la riscrittura del manifest MPD: {e}")
+            logger.error(f"❌ Error during MPD manifest rewrite: {e}")
             return manifest_content
 
     @staticmethod
-    async def rewrite_manifest_urls(manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '', api_password: str = None, get_extractor_func=None) -> str:
+    async def rewrite_manifest_urls(manifest_content: str, base_url: str, proxy_base: str, stream_headers: dict, original_channel_url: str = '', api_password: str = None, get_extractor_func=None, no_bypass: bool = False) -> str:
         """✅ AGGIORNATA: Riscrive gli URL nei manifest HLS per passare attraverso il proxy (incluse chiavi AES)"""
         lines = manifest_content.split('\n')
         rewritten_lines = []
@@ -155,10 +155,10 @@ class ManifestRewriter:
                 
                 if hasattr(extractor, 'is_vixsrc') and extractor.is_vixsrc:
                     is_vixsrc_stream = True
-                    logger.info("Rilevato stream VixSrc.")
+                    logger.info("Detected VixSrc stream.")
                 elif DLHDExtractor and isinstance(extractor, DLHDExtractor):
                     is_dlhd_stream = True
-                    logger.info(f"✅ Rilevato stream DLHD. Sarà proxato completamente.")
+                    logger.info(f"✅ Detected DLHD stream. Will be fully proxied.")
         except Exception as e:
             logger.error(f"Error in extractor detection: {e}")
             pass
@@ -175,7 +175,7 @@ class ManifestRewriter:
             
             if streams:
                 highest_quality_stream = max(streams, key=lambda x: x['bandwidth'])
-                logger.info(f"VixSrc: Selezionata bandwidth {highest_quality_stream['bandwidth']}.")
+                logger.info(f"VixSrc: Selected bandwidth {highest_quality_stream['bandwidth']}.")
                 
                 rewritten_lines.append('#EXTM3U')
                 for line in lines:
@@ -203,6 +203,8 @@ class ManifestRewriter:
         
         if api_password:
             header_params += f"&api_password={api_password}"
+        if no_bypass:
+            header_params += "&no_bypass=1"
 
         # Estrai query params dal base_url per ereditarli se necessario
         base_parsed = urllib.parse.urlparse(base_url)
@@ -291,7 +293,7 @@ class ManifestRewriter:
                 # Freeshot (planetary.lovecdn.ru) ha token che scadono in ~20-30 secondi
                 # Se proxiamo, il token scade prima che il player richieda i segmenti
                 no_proxy_domains = ['planetary.lovecdn.ru', 'lovecdn.ru']
-                should_bypass = any(domain in absolute_url for domain in no_proxy_domains)
+                should_bypass = not no_bypass and any(domain in absolute_url for domain in no_proxy_domains)
                 
                 if should_bypass:
                     # Serve l'URL diretto senza passare dal proxy
@@ -310,13 +312,13 @@ class ManifestRewriter:
                          ext = '.ts'
                          if path.endswith('.m4s') or path.endswith('.mp4') or path.endswith('.m4v'):
                              ext = '.mp4'
-                         
+
                          proxy_url = f"{proxy_base}/proxy/hls/segment{ext}?d={encoded_url}{header_params}"
-                    
+
                     rewritten_lines.append(proxy_url)
 
             else:
                 # Tutti gli altri tag (es. #EXTINF, #EXT-X-ENDLIST)
                 rewritten_lines.append(line)
-        
+
         return '\n'.join(rewritten_lines)
